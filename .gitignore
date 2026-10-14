@@ -1,0 +1,10 @@
+.venv/
+node_modules/
+.env
+.certs/
+frontend/react-web/public/downloads/
+dist/
+__pycache__/
+services/api-fastapi/data/
+infra/lightsail/.env
+infra/lightsail/production.env

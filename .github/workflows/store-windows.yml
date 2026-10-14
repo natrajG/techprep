@@ -1,0 +1,29 @@
+name: Windows Store package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm --prefix frontend/react-web ci
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop test
+      - run: npm --prefix desktop run store:win
+        env:
+          TECHPREP_SERVER_URL: https://13-201-213-33.sslip.io/
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: techprep-store-appx
+          path: desktop/release/store/*.appx
+          if-no-files-found: error
+          retention-days: 7

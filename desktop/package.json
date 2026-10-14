@@ -1,0 +1,63 @@
+{
+  "name": "techprep-desktop",
+  "productName": "TechPrep",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=22.12.0" },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.cjs\"",
+    "build": "npm --prefix ../frontend/react-web run build",
+    "pack:win": "node build-windows.cjs --dir",
+    "pack:mac": "npm run build && electron-builder --mac --dir",
+    "dist:win": "node build-windows.cjs",
+    "release:win": "npm run build && node build-windows-production.cjs",
+    "store:win": "node build-windows-store.cjs",
+    "dist:mac": "npm run build && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "44.7.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.techprep.desktop",
+    "productName": "TechPrep",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "capture-protection.js",
+      "overlay-window.js",
+      "server-url.js",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "techprepServerUrl": "https://192.168.0.109:5173/"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "artifactName": "TechPrep-Setup.exe"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "TechPrep uses audio you choose to capture for transcription.",
+        "NSAudioCaptureUsageDescription": "TechPrep captures system audio you choose for transcription.",
+        "NSScreenCaptureUsageDescription": "TechPrep lets you choose a display source for transcription."
+      }
+    }
+  }
+}

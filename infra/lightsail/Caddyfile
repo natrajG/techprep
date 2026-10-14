@@ -1,0 +1,25 @@
+{$TECHPREP_HOST} {
+	request_body {
+		# Audio chunks are limited to 10 MB by the API; allow multipart overhead.
+		max_size 12MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Caddy replaces any client-supplied X-Forwarded-For with the real peer address.
+	# flush_interval -1 streams answers (Server-Sent Events) immediately.
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

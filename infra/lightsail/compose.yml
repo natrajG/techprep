@@ -1,0 +1,64 @@
+# Single-server production stack for AWS Lightsail. Only Caddy publishes ports (80/443).
+name: techprep
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: techprep-api:latest
+    restart: unless-stopped
+    env_file: ./production.env
+    environment:
+      APP_ENV: production
+      USERS_DB: /data/users.db
+      DESKTOP_RELEASE_DIR: /releases
+    volumes:
+      - techprep_data:/data
+      - ${TECHPREP_RELEASES_DIR:-/srv/techprep/releases}:/releases:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      - internal
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      TECHPREP_HOST: ${TECHPREP_HOST:?Set TECHPREP_HOST in infra/lightsail/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      internal:
+        # The API trusts forwarded client addresses only from this address.
+        ipv4_address: 172.30.0.10
+    logging: *logging
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  techprep_data:
+  caddy_data:
+  caddy_config:

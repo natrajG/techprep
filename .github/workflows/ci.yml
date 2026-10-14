@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  fastapi-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api-fastapi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile app/main.py
+      - run: python -m unittest test_downloads test_production
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t techprep-api:ci .
+      - run: cp infra/lightsail/production.env.example infra/lightsail/production.env
+      - run: docker compose -f infra/lightsail/compose.yml config --quiet
+        env:
+          TECHPREP_HOST: ci.example.org
+      - run: docker run --rm -e TECHPREP_HOST=ci.example.org -v "$PWD/infra/lightsail/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+
+  flask-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-flask
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile app/main.py
+
+  react-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/react-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm install
+      - run: node --test test/*.test.mjs
+      - run: npm run build
+
+  desktop-check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm --prefix frontend/react-web ci
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop test
+      - run: npm --prefix desktop run build
+      - if: runner.os == 'Windows'
+        run: npm --prefix desktop run pack:win
+      - if: runner.os == 'macOS'
+        run: npm --prefix desktop run pack:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

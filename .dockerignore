@@ -1,0 +1,15 @@
+# Only the web UI source and API code are needed. Never send secrets, keys, or local data to a build.
+**
+!frontend/react-web/package.json
+!frontend/react-web/package-lock.json
+!frontend/react-web/index.html
+!frontend/react-web/vite.config.js
+!frontend/react-web/src/**
+!frontend/react-web/public/**
+!services/api-fastapi/requirements.txt
+!services/api-fastapi/app/**
+**/__pycache__
+**/*.pyc
+**/.env*
+**/*.pem
+**/*.key

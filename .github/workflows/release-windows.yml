@@ -1,0 +1,36 @@
+name: Windows signed release
+
+# Manual release. Signing uses a certificate on a self-hosted Windows runner (hardware token or
+# cloud-signing KSP), or a PFX supplied through secrets. Nothing is published unless signatures verify.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ${{ vars.WINDOWS_SIGNING_RUNNER || 'windows-latest' }}
+    environment: production-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm --prefix frontend/react-web ci
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop test
+      - run: npm --prefix desktop run release:win
+        env:
+          TECHPREP_SERVER_URL: ${{ vars.TECHPREP_SERVER_URL }}
+          TECHPREP_SIGNER_SHA1: ${{ vars.TECHPREP_SIGNER_SHA1 }}
+          TECHPREP_TIMESTAMP_URL: ${{ vars.TECHPREP_TIMESTAMP_URL }}
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: techprep-windows-release
+          path: |
+            desktop/release/production/publish/TechPrep-Setup.exe
+            desktop/release/production/publish/desktop-release.json
+          if-no-files-found: error
