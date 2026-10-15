@@ -5,6 +5,7 @@ import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import DesktopDownload from "./DesktopDownload";
 import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
+import { splitBold } from "./rich-text.mjs";
 import "./overlay.css";
 
 // Vite proxies API requests; FastAPI serves them directly in the desktop app.
@@ -309,7 +310,7 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
             <textarea rows={4} placeholder="Paste your resume…" value={resume} onChange={(e) => setResume(e.target.value)} />
             <textarea rows={3} placeholder="Paste the job description…" value={jd} onChange={(e) => setJd(e.target.value)} />
           </details>
-          <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: "#95c8ff", fontSize: 13 }}>Privacy policy</a>
+          <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: "#95c8ff", fontSize: 13, marginRight: 12 }}>Privacy policy</a>
           <button className="hud-pill" onClick={onSignOut}>Sign out</button>
         </section>
       )}
@@ -326,7 +327,7 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
         {question && <p className="hud-q"><b>💬 Question:</b> {question}</p>}
         {(answer || busy) && (
           <div className="hud-a"><b>⭐ Answer:</b>
-            <pre>{answer}</pre>
+            <pre>{splitBold(answer).map((part, i) => part.bold ? <strong key={i}>{part.text}</strong> : part.text)}</pre>
           </div>
         )}
         {!question && !answer && !busy && <p className="hud-muted">Answers appear here.</p>}

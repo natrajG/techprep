@@ -395,7 +395,7 @@ $env:TECHPREP_SERVER_URL = "https://13-201-213-33.sslip.io/"
 npm --prefix desktop run store:win
 ```
 
-Find `desktop/release/store/TechPrep-Store-0.1.0-x64.appx` (the version in the filename
+Find `desktop/release/store/TechPrep-Store-0.1.1-x64.appx` (the version in the filename
 follows `desktop/package.json`). Upload **that `.appx` file**, not `TechPrep-Setup.exe`,
 under Partner Center > TechPrep > Submission > Packages. The Store build uses the
 reserved identity `NatrajG.TechPrep`, publisher
@@ -404,7 +404,10 @@ check these still match Product identity exactly before uploading. It embeds the
 HTTPS server URL; the API and web UI stay on Lightsail and must remain available.
 The package targets Windows 10 2004+ (x64) and declares internet access and
 `runFullTrust` for the Electron desktop application. Store updates must increment
-the desktop package version. If you need to test the package outside the Store,
+the desktop package version. AppX tile assets in `desktop/build/appx/` and the
+Windows executable icon in `desktop/build/icon.ico` must ship with the source
+used by the Windows build; the Store listing's 300px icon alone does not change
+the installed app's tiles. If you need to test the package outside the Store,
 sign a **separate copy** with a locally trusted test certificate or use a Store flight;
 the upload artifact itself is not a general-purpose signed installer.
 

@@ -31,6 +31,7 @@ function storeOptions(env, platform = process.platform) {
         minVersion: "10.0.19041.0",
         languages: ["en-US"],
         capabilities: ["internetClient"],
+        backgroundColor: "#0f172a",
       },
     },
   };

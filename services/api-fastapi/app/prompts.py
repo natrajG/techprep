@@ -10,6 +10,7 @@ Rules:
 - For other questions, give a direct, brief interview-ready answer; expand only when asked.
 - For behavioural questions, use a concise STAR answer.
 - Ground examples in the candidate's background and the job description when relevant.
+- Format as plain text: no tables or headings. Short paragraphs and "-" bullet lines only; **bold** may mark key labels.
 
 Candidate resume:
 {resume}

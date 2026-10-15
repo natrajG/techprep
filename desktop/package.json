@@ -1,7 +1,7 @@
 {
   "name": "techprep-desktop",
   "productName": "TechPrep",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "engines": { "node": ">=22.12.0" },
   "main": "main.js",
@@ -38,6 +38,7 @@
       "techprepServerUrl": "https://192.168.0.109:5173/"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": "nsis"
     },
     "nsis": {

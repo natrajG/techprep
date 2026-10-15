@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import App from "./App";
+import Landing from "./Landing";
 import Login from "./Login";
 import { checkSession, clearToken, loadConfig, login, signup } from "./auth.mjs";
 
@@ -11,6 +12,7 @@ const loginWindow = !!desktop && new URLSearchParams(location.search).has("login
 export default function Root() {
   const [session, setSession] = useState("checking"); // checking | signedOut | signedIn | unreachable
   const [reload, setReload] = useState(0);
+  const [showLogin, setShowLogin] = useState(false);
   const [config, setConfig] = useState(null);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function Root() {
     );
   }
   if (session === "signedOut") {
+    if (!desktop && !showLogin) return <Landing onSignIn={() => setShowLogin(true)} storeUrl={config.store_url} />;
     return loginWindow || !desktop
       ? <Login onSubmit={signIn} onSignUp={config.signup_enabled ? signUp : undefined} minimumPassword={config.minimum_password} />
       : null;
