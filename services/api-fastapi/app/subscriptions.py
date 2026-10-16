@@ -39,10 +39,21 @@ PLANS = {
 }
 
 # Configurable UPI Merchant VPA & Name
-DEFAULT_UPI_VPA = os.getenv("UPI_VPA", "techprep@upi")
-DEFAULT_UPI_NAME = os.getenv("UPI_NAME", "TechPrep Assistant")
-CUSTOM_QR_DIR = Path(__file__).resolve().parents[1] / "data"
+DEFAULT_UPI_VPA = os.getenv("UPI_VPA", "8886164220-5@axl")
+DEFAULT_UPI_NAME = os.getenv("UPI_NAME", "GUNDIMALLA RAJESHWARI")
+_DATA_ENV = os.getenv("TECHPREP_DATA_DIR")
+if _DATA_ENV:
+    CUSTOM_QR_DIR = Path(_DATA_ENV)
+elif os.getenv("APP_ENV") == "production":
+    CUSTOM_QR_DIR = Path("/data")
+else:
+    CUSTOM_QR_DIR = Path(__file__).resolve().parents[1] / "data"
 CUSTOM_QR_PATH = CUSTOM_QR_DIR / "merchant_upi_qr.png"
+
+
+def is_admin(username: str) -> bool:
+    admin_user = os.getenv("APP_USERNAME")
+    return bool(admin_user and username.lower() == admin_user.lower())
 
 
 @contextmanager
@@ -196,6 +207,8 @@ def get_custom_qr_image():
 
 @router.post("/upload-qr")
 async def upload_custom_qr(file: UploadFile = File(...), user: str = Depends(require_auth)):
+    if not is_admin(user):
+        raise HTTPException(403, "Only administrator can update merchant QR code")
     data = await file.read(5 * 1024 * 1024 + 1)
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(413, "QR image file exceeds 5MB limit")

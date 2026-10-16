@@ -106,7 +106,7 @@ async def signup(req: LoginRequest) -> dict:
 
 @app.get("/api/v1/me")
 def me(user: str = Depends(auth.require_auth)) -> dict:
-    return {"user": user}
+    return {"user": user, "is_admin": subscriptions.is_admin(user)}
 
 
 @app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])

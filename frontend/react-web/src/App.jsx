@@ -329,10 +329,20 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
             <button className="hud-icon" onClick={() => desktop.minimize()} title="Minimize">–</button>
             <button className="hud-pill hud-end" onClick={() => desktop.close()} title="Close">End</button>
           </>
-        ) : pipSupported && (
-          <button className="hud-pill" onClick={togglePip}>{pipWindow ? "Dock" : "Float"}</button>
-        )}
+        ) : null}
       </div>
+
+      {!desktop && (
+        <section className="hud-card" style={{ borderColor: "rgba(245, 158, 11, 0.4)", background: "rgba(245, 158, 11, 0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: 18 }}>🛡️</span>
+            <strong style={{ color: "#fbbf24", fontSize: 14 }}>Screen Share Protection Notice</strong>
+          </div>
+          <p style={{ margin: "0 0 8px", fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
+            Web browsers <strong>cannot</strong> hide from screen sharing (Zoom, Teams, Google Meet). To prevent interviewers from seeing this window, please download and use the <strong>TechPrep Desktop App</strong> below.
+          </p>
+        </section>
+      )}
 
       {!desktop && <DesktopDownload localNetwork={localNetwork} storeUrl={storeUrl} />}
 

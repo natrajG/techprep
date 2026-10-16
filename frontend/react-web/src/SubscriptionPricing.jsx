@@ -4,7 +4,7 @@ import { makeQrSvg } from "./qr.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 
-export default function SubscriptionPricing({ currentSubscription, onPaymentSuccess, onClose, allowQrUpload = true }) {
+export default function SubscriptionPricing({ currentSubscription, onPaymentSuccess, onClose, allowQrUpload = false }) {
   const [plans, setPlans] = useState([]);
   const [customQrUrl, setCustomQrUrl] = useState(null);
   const [selectedPlan, setSelectedPlan] = useState("hourly_call");
