@@ -3,6 +3,7 @@ import App from "./App";
 import Landing from "./Landing";
 import Login from "./Login";
 import SubscriptionPricing from "./SubscriptionPricing";
+import WebDashboard from "./WebDashboard";
 import { checkSession, clearToken, loadConfig, login, signup } from "./auth.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 
@@ -83,6 +84,10 @@ export default function Root() {
 
   function signOut() {
     clearToken();
+    setAuthView(null);
+    setShowRenewModal(false);
+    setCurrentUser(null);
+    setSubscription(null);
     if (desktop) desktop.signOut();
     else setSession("signedOut");
   }
@@ -97,39 +102,75 @@ export default function Root() {
     );
   }
   if (session === "signedOut") {
-    if (!desktop && !authView) {
+    if (!desktop) {
       return (
-        <Landing
-          onSignIn={() => setAuthView("signin")}
-          onSignUp={() => setAuthView("signup")}
-          storeUrl={config.store_url}
-        />
+        <>
+          <Landing
+            onSignIn={() => setAuthView("signin")}
+            onSignUp={() => setAuthView("signup")}
+            storeUrl={config?.store_url}
+          />
+          {authView && (
+            <Login
+              initialMode={authView}
+              onSubmit={signIn}
+              onSignUp={config?.signup_enabled ? signUp : undefined}
+              onBack={() => setAuthView(null)}
+              minimumPassword={config?.minimum_password || 8}
+              isModal={true}
+            />
+          )}
+          {showRenewModal && (
+            <SubscriptionPricing
+              onClose={() => setShowRenewModal(false)}
+              onPaymentSuccess={() => {
+                setShowRenewModal(false);
+                setAuthView("signin");
+              }}
+            />
+          )}
+        </>
       );
     }
+    return (
+      <Login
+        initialMode="signin"
+        onSubmit={signIn}
+        onSignUp={undefined}
+        minimumPassword={config?.minimum_password || 8}
+      />
+    );
+  }
+  if (loginWindow) return <p style={{ fontFamily: "system-ui", padding: 16 }}>Opening the overlay…</p>;
+
+  // Web browser users: render the Web Dashboard (subscription management, desktop download, instructions)
+  // Live listening and HUD overlay are exclusively reserved for the desktop application.
+  if (!desktop) {
     return (
       <>
         {showRenewModal && (
           <SubscriptionPricing
+            currentSubscription={subscription}
             onClose={() => setShowRenewModal(false)}
             onPaymentSuccess={() => {
               setShowRenewModal(false);
-              setAuthView("signin");
+              setReload((n) => n + 1);
             }}
           />
         )}
-        {(loginWindow || !desktop) && (
-          <Login
-            initialMode={loginWindow ? "signin" : (authView || "signin")}
-            onSubmit={signIn}
-            onSignUp={loginWindow ? undefined : (config.signup_enabled ? signUp : undefined)}
-            onBack={desktop ? undefined : () => setAuthView(null)}
-            minimumPassword={config.minimum_password}
-          />
-        )}
+        <WebDashboard
+          user={currentUser}
+          subscription={subscription}
+          onSignOut={signOut}
+          storeUrl={config.store_url}
+          localNetwork={config.local_network}
+          onRefreshSubscription={() => setReload((n) => n + 1)}
+        />
       </>
     );
   }
-  if (loginWindow) return <p style={{ fontFamily: "system-ui", padding: 16 }}>Opening the overlay…</p>;
+
+  // Desktop Electron application: render the stealth HUD overlay
   return (
     <>
       {showRenewModal && (

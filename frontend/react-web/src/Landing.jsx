@@ -44,7 +44,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
 
         <div style={styles.actions}>
           <button style={styles.primary} onClick={onSignUp || onSignIn}>
-            Sign Up &amp; Start Trial →
+            Get Started Now →
           </button>
           <button style={styles.demoAction} onClick={() => setShowDemo(true)}>
             ▶ Watch Live Simulation

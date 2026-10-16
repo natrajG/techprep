@@ -36,8 +36,6 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
-  const [pipWindow, setPipWindow] = useState(null);
-  const pipSupported = "documentPictureInPicture" in window;
   const [onTop, setOnTop] = useState(load("onTop", "true") === "true");
   const [opacity, setOpacity] = useState(Number(load("opacity", "0.85")));
   const [captureProtection, setCaptureProtection] = useState({ supported: false, requested: false, status: "loading" });
@@ -267,26 +265,6 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
     }
   }
 
-  // Browser-only: Document Picture-in-Picture floating window (closes with its tab).
-  async function togglePip() {
-    if (pipWindow) {
-      pipWindow.close();
-      return;
-    }
-    try {
-      const win = await window.documentPictureInPicture.requestWindow({ width: 460, height: 640 });
-      win.document.title = "TechPrep";
-      win.document.body.style.margin = "0";
-      win.document.body.style.background = "transparent";
-      // Document PiP windows start without the page's styles.
-      document.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => win.document.head.appendChild(el.cloneNode(true)));
-      win.addEventListener("pagehide", () => setPipWindow(null));
-      setPipWindow(win);
-    } catch (e) {
-      setStatus("Could not open floating window: " + e.message);
-    }
-  }
-
   const chips = (() => {
     const words = transcript.trim().split(/\s+/).filter(Boolean).slice(-12);
     const out = [];
@@ -457,17 +435,6 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
     </main>
   );
 
-  if (pipWindow) {
-    return (
-      <>
-        <main style={s.page}>
-          <p>The copilot is in a floating always-on-top window.</p>
-          <button style={s.btn} onClick={togglePip}>Bring it back here</button>
-        </main>
-        {createPortal(panel, pipWindow.document.body)}
-      </>
-    );
-  }
   return panel;
 }
 

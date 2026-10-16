@@ -8,3 +8,5 @@ __pycache__/
 services/api-fastapi/data/
 infra/lightsail/.env
 infra/lightsail/production.env
+.idea/
+

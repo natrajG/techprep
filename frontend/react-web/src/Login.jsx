@@ -1,6 +1,13 @@
 import { useState } from "react";
 
-export default function Login({ onSubmit, onSignUp, initialMode = "signin", onBack, minimumPassword = 8 }) {
+export default function Login({
+  onSubmit,
+  onSignUp,
+  initialMode = "signin",
+  onBack,
+  minimumPassword = 8,
+  isModal = false,
+}) {
   const [creating, setCreating] = useState(initialMode === "signup");
   const [confirm, setConfirm] = useState("");
   const [username, setUsername] = useState("");
@@ -26,8 +33,13 @@ export default function Login({ onSubmit, onSignUp, initialMode = "signin", onBa
   }
 
   return (
-    <main style={styles.page}>
-      <form onSubmit={submit} style={styles.card}>
+    <div style={isModal ? styles.modalOverlay : styles.page} onClick={isModal ? onBack : undefined}>
+      <form onSubmit={submit} style={styles.card} onClick={(e) => e.stopPropagation()}>
+        {isModal && (
+          <button type="button" style={styles.closeBtn} onClick={onBack} aria-label="Close">
+            ✕
+          </button>
+        )}
         <div style={styles.brandRow}>
           <span style={styles.logoDot}></span>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>TechPrep</h2>
@@ -67,11 +79,25 @@ export default function Login({ onSubmit, onSignUp, initialMode = "signin", onBa
         )}
         <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={styles.privacy}>Privacy policy</a>
       </form>
-    </main>
+    </div>
   );
 }
 
 const styles = {
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(3, 7, 18, 0.75)",
+    backdropFilter: "blur(8px)",
+    display: "grid",
+    placeItems: "center",
+    zIndex: 1000,
+    padding: 16,
+    boxSizing: "border-box",
+  },
   page: {
     fontFamily: "system-ui, -apple-system, sans-serif",
     minHeight: "100vh",
@@ -83,6 +109,7 @@ const styles = {
     boxSizing: "border-box",
   },
   card: {
+    position: "relative",
     width: 360,
     maxWidth: "92vw",
     background: "linear-gradient(145deg, #10131e 0%, #0d0f17 100%)",
@@ -91,6 +118,21 @@ const styles = {
     border: "1px solid rgba(255, 255, 255, 0.1)",
     boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.15)",
     boxSizing: "border-box",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    background: "rgba(255, 255, 255, 0.08)",
+    border: "none",
+    color: "#94a3b8",
+    fontSize: 16,
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
   },
   brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
   logoDot: { width: 8, height: 8, borderRadius: "50%", background: "#4f46e5", boxShadow: "0 0 10px #6366f1" },
