@@ -18,7 +18,7 @@ export default function Root() {
   const [currentUser, setCurrentUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [reload, setReload] = useState(0);
-  const [showLogin, setShowLogin] = useState(false);
+  const [authView, setAuthView] = useState(null); // null | 'signin' | 'signup'
   const [config, setConfig] = useState(null);
   const [showRenewModal, setShowRenewModal] = useState(renewRequested);
 
@@ -97,7 +97,15 @@ export default function Root() {
     );
   }
   if (session === "signedOut") {
-    if (!desktop && !showLogin) return <Landing onSignIn={() => setShowLogin(true)} storeUrl={config.store_url} />;
+    if (!desktop && !authView) {
+      return (
+        <Landing
+          onSignIn={() => setAuthView("signin")}
+          onSignUp={() => setAuthView("signup")}
+          storeUrl={config.store_url}
+        />
+      );
+    }
     return (
       <>
         {showRenewModal && (
@@ -105,12 +113,18 @@ export default function Root() {
             onClose={() => setShowRenewModal(false)}
             onPaymentSuccess={() => {
               setShowRenewModal(false);
-              setShowLogin(true);
+              setAuthView("signin");
             }}
           />
         )}
         {(loginWindow || !desktop) && (
-          <Login onSubmit={signIn} onSignUp={config.signup_enabled ? signUp : undefined} minimumPassword={config.minimum_password} />
+          <Login
+            initialMode={loginWindow ? "signin" : (authView || "signin")}
+            onSubmit={signIn}
+            onSignUp={loginWindow ? undefined : (config.signup_enabled ? signUp : undefined)}
+            onBack={desktop ? undefined : () => setAuthView(null)}
+            minimumPassword={config.minimum_password}
+          />
         )}
       </>
     );

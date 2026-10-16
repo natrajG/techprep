@@ -2,7 +2,7 @@ import { useState } from "react";
 import InteractiveDemo from "./InteractiveDemo";
 import SubscriptionPricing from "./SubscriptionPricing";
 
-export default function Landing({ onSignIn, storeUrl }) {
+export default function Landing({ onSignIn, onSignUp, storeUrl }) {
   const [showDemo, setShowDemo] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
 
@@ -21,8 +21,11 @@ export default function Landing({ onSignIn, storeUrl }) {
           <button style={styles.navBtn} onClick={() => setShowPricing(true)}>
             Pricing (₹199 / Call)
           </button>
-          <button style={styles.navPrimary} onClick={onSignIn}>
-            Sign In / Get Started
+          <button style={styles.navBtn} onClick={onSignIn}>
+            Sign In
+          </button>
+          <button style={styles.navPrimary} onClick={onSignUp || onSignIn}>
+            Sign Up
           </button>
         </div>
       </header>
@@ -40,17 +43,12 @@ export default function Landing({ onSignIn, storeUrl }) {
         </p>
 
         <div style={styles.actions}>
-          <button style={styles.primary} onClick={onSignIn}>
-            Start Free Trial & Sign In →
+          <button style={styles.primary} onClick={onSignUp || onSignIn}>
+            Sign Up &amp; Start Trial →
           </button>
           <button style={styles.demoAction} onClick={() => setShowDemo(true)}>
             ▶ Watch Live Simulation
           </button>
-          {storeUrl && (
-            <a style={styles.secondary} href={storeUrl} target="_blank" rel="noopener noreferrer">
-              Microsoft Store
-            </a>
-          )}
         </div>
 
         <div style={styles.statsRow}>
@@ -158,7 +156,8 @@ export default function Landing({ onSignIn, storeUrl }) {
           onClose={() => setShowPricing(false)}
           onPaymentSuccess={() => {
             setShowPricing(false);
-            onSignIn();
+            if (onSignUp) onSignUp();
+            else onSignIn();
           }}
         />
       )}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-export default function Login({ onSubmit, onSignUp, minimumPassword = 8 }) {
-  const [creating, setCreating] = useState(false);
+export default function Login({ onSubmit, onSignUp, initialMode = "signin", onBack, minimumPassword = 8 }) {
+  const [creating, setCreating] = useState(initialMode === "signup");
   const [confirm, setConfirm] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,6 +58,11 @@ export default function Login({ onSubmit, onSignUp, minimumPassword = 8 }) {
           <button type="button" style={styles.link} disabled={busy}
             onClick={() => { setCreating(!creating); setError(""); }}>
             {creating ? "Already have an account? Sign in" : "No account? Sign up"}
+          </button>
+        )}
+        {onBack && (
+          <button type="button" style={{ ...styles.link, color: "#94a3b8" }} onClick={onBack}>
+            ← Back to Home
           </button>
         )}
         <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={styles.privacy}>Privacy policy</a>
