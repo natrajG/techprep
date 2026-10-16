@@ -6,6 +6,9 @@ import DesktopDownload from "./DesktopDownload";
 import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
 import { splitBold } from "./rich-text.mjs";
+import { fetchSubscriptionStatus } from "./subscriptions.mjs";
+import SubscriptionPricing from "./SubscriptionPricing";
+import UserProfileModal from "./UserProfileModal";
 import "./overlay.css";
 
 // Vite proxies API requests; FastAPI serves them directly in the desktop app.
@@ -19,7 +22,7 @@ const useDeviceInput = desktop?.platform === "linux";
 
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
 
-export default function App({ onSignOut, localNetwork = true, storeUrl = null }) {
+export default function App({ onSignOut, currentUser = null, initialSubscription = null, localNetwork = true, storeUrl = null }) {
   const [resume, setResume] = useState(load("resume"));
   const [jd, setJd] = useState(load("jd"));
   const [transcript, setTranscript] = useState("");
@@ -41,6 +44,24 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
   const [capturePending, setCapturePending] = useState(true);
   const [captureError, setCaptureError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [subscription, setSubscription] = useState(initialSubscription);
+  const [subExpired, setSubExpired] = useState(!initialSubscription || initialSubscription.status !== "active");
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  useEffect(() => {
+    fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
+      .then((data) => {
+        if (data.has_active && data.subscription) {
+          setSubscription(data.subscription);
+          setSubExpired(false);
+        } else {
+          setSubscription(null);
+          setSubExpired(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!desktop) return;
@@ -89,6 +110,12 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
       const text = await transcribeAudio(API, blob, fetch, localStorage, notifyExpired);
       if (text.trim()) setTranscript((t) => (t + " " + text.trim()).slice(-20000));
     } catch (e) {
+      if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
+        stopListening();
+        setSubExpired(true);
+        setStatus("Subscription expired. Please renew access.");
+        return;
+      }
       setStatus("Transcription error: " + e.message);
     }
   }
@@ -117,6 +144,10 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
   }
 
   async function startListening() {
+    if (subExpired) {
+      handleRenewClick();
+      return;
+    }
     try {
       let stream;
       if (useDeviceInput) {
@@ -163,6 +194,10 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
   }
 
   async function getAnswer() {
+    if (subExpired) {
+      handleRenewClick();
+      return;
+    }
     setBusy(true);
     setAnswer("");
     setQuestion("");
@@ -212,9 +247,23 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
       }
       setManualQ("");
     } catch (e) {
-      setAnswer("Error: " + e.message);
+      if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
+        setSubExpired(true);
+        setAnswer("⚠️ Subscription or 1-hour session expired. Please renew access to continue.");
+      } else {
+        setAnswer("Error: " + e.message);
+      }
     } finally {
       setBusy(false);
+    }
+  }
+
+  function handleRenewClick() {
+    if (desktop && typeof desktop.openExternal === "function") {
+      const publicOrigin = window.location.origin;
+      desktop.openExternal(`${publicOrigin}/?renew=1`);
+    } else {
+      setShowPricingModal(true);
     }
   }
 
@@ -265,7 +314,16 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
         </button>
         <button className="hud-pill" onClick={() => setTranscript("")} title="Clear transcript">Clear</button>
         <span className="hud-spacer" />
-        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title="Settings" aria-expanded={menuOpen}>⋮</button>
+        <button
+          className="hud-pill hud-profile-pill"
+          onClick={() => setShowProfileModal(true)}
+          title="Account Profile & Credits"
+        >
+          <span className="hud-profile-dot" style={{ background: subscription ? "#4ade80" : "#f87171" }} />
+          <span>{currentUser || "Profile"}</span>
+          <span className="hud-plan-tag">{subscription ? subscription.plan_name.split(" ")[0] : "Free"}</span>
+        </button>
+        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title="Quick Settings" aria-expanded={menuOpen}>⋮</button>
         {desktop ? (
           <>
             <button className="hud-icon" onClick={() => desktop.minimize()} title="Minimize">–</button>
@@ -277,6 +335,59 @@ export default function App({ onSignOut, localNetwork = true, storeUrl = null })
       </div>
 
       {!desktop && <DesktopDownload localNetwork={localNetwork} storeUrl={storeUrl} />}
+
+      {subExpired && (
+        <div className="hud-sub-expired">
+          <span style={{ fontSize: 13, color: "#fecaca" }}>
+            ⚠️ <strong>Subscription Inactive / Expired.</strong> Renew to enable AI answers & transcription.
+          </span>
+          <button type="button" className="hud-renew-btn" onClick={handleRenewClick}>
+            Renew (from ₹199)
+          </button>
+        </div>
+      )}
+
+      {showPricingModal && (
+        <SubscriptionPricing
+          currentSubscription={subscription}
+          onClose={() => setShowPricingModal(false)}
+          onPaymentSuccess={() => {
+            setShowPricingModal(false);
+            setSubExpired(false);
+            fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
+              .then((d) => setSubscription(d.subscription))
+              .catch(() => {});
+          }}
+        />
+      )}
+
+      {showProfileModal && (
+        <UserProfileModal
+          user={currentUser}
+          subscription={subscription}
+          onClose={() => setShowProfileModal(false)}
+          onOpenPricing={() => {
+            setShowProfileModal(false);
+            setShowPricingModal(true);
+          }}
+          onSignOut={onSignOut}
+          storeUrl={storeUrl}
+          localNetwork={localNetwork}
+          desktop={desktop}
+          resume={resume}
+          setResume={setResume}
+          jd={jd}
+          setJd={setJd}
+          opacity={opacity}
+          setOpacity={setOpacity}
+          onTop={onTop}
+          setOnTop={setOnTop}
+          captureProtection={captureProtection}
+          capturePending={capturePending}
+          captureError={captureError}
+          requestCaptureProtection={requestCaptureProtection}
+        />
+      )}
 
       <div className="hud-bar hud-chips">
         <span className={`hud-eq${listening ? " live" : ""}`} aria-hidden>▮▮▮</span>

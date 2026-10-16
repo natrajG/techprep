@@ -2,27 +2,57 @@ import { useEffect, useState } from "react";
 import App from "./App";
 import Landing from "./Landing";
 import Login from "./Login";
+import SubscriptionPricing from "./SubscriptionPricing";
 import { checkSession, clearToken, loadConfig, login, signup } from "./auth.mjs";
+import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 
 const desktop = window.desktop;
 const API = import.meta.env.VITE_API_URL || "";
 // In Electron, the first window is a login window (?login=1); the overlay opens only after sign-in.
-const loginWindow = !!desktop && new URLSearchParams(location.search).has("login");
+const searchParams = new URLSearchParams(location.search);
+const loginWindow = !!desktop && searchParams.has("login");
+const renewRequested = searchParams.has("renew");
 
 export default function Root() {
   const [session, setSession] = useState("checking"); // checking | signedOut | signedIn | unreachable
+  const [currentUser, setCurrentUser] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [reload, setReload] = useState(0);
   const [showLogin, setShowLogin] = useState(false);
   const [config, setConfig] = useState(null);
+  const [showRenewModal, setShowRenewModal] = useState(renewRequested);
 
   useEffect(() => {
     let active = true;
     setSession("checking");
     Promise.all([checkSession(API), loadConfig(API)])
-      .then(([ok, loaded]) => {
+      .then(async ([sessionResult, loaded]) => {
         if (!active) return;
         setConfig(loaded);
-        setSession(ok ? "signedIn" : "signedOut");
+        if (sessionResult.ok) {
+          setCurrentUser(sessionResult.user);
+          try {
+            const subData = await fetchSubscriptionStatus(API);
+            if (!active) return;
+            if (subData.has_active && subData.subscription) {
+              setSubscription(subData.subscription);
+            } else {
+              setSubscription(null);
+              // Auto show subscription pricing for newly signed-in users without active plan on web
+              if (!desktop && !renewRequested) {
+                setShowRenewModal(true);
+              }
+            }
+          } catch {
+            if (!active) return;
+            setSubscription(null);
+          }
+          setSession("signedIn");
+        } else {
+          setCurrentUser(null);
+          setSubscription(null);
+          setSession("signedOut");
+        }
       })
       .catch(() => active && setSession("unreachable"));
     return () => { active = false; };
@@ -68,10 +98,43 @@ export default function Root() {
   }
   if (session === "signedOut") {
     if (!desktop && !showLogin) return <Landing onSignIn={() => setShowLogin(true)} storeUrl={config.store_url} />;
-    return loginWindow || !desktop
-      ? <Login onSubmit={signIn} onSignUp={config.signup_enabled ? signUp : undefined} minimumPassword={config.minimum_password} />
-      : null;
+    return (
+      <>
+        {showRenewModal && (
+          <SubscriptionPricing
+            onClose={() => setShowRenewModal(false)}
+            onPaymentSuccess={() => {
+              setShowRenewModal(false);
+              setShowLogin(true);
+            }}
+          />
+        )}
+        {(loginWindow || !desktop) && (
+          <Login onSubmit={signIn} onSignUp={config.signup_enabled ? signUp : undefined} minimumPassword={config.minimum_password} />
+        )}
+      </>
+    );
   }
   if (loginWindow) return <p style={{ fontFamily: "system-ui", padding: 16 }}>Opening the overlay…</p>;
-  return <App onSignOut={signOut} localNetwork={config.local_network} storeUrl={config.store_url} />;
+  return (
+    <>
+      {showRenewModal && (
+        <SubscriptionPricing
+          currentSubscription={subscription}
+          onClose={() => setShowRenewModal(false)}
+          onPaymentSuccess={() => {
+            setShowRenewModal(false);
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
+      <App
+        onSignOut={signOut}
+        currentUser={currentUser}
+        initialSubscription={subscription}
+        localNetwork={config.local_network}
+        storeUrl={config.store_url}
+      />
+    </>
+  );
 }

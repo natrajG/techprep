@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from . import settings
+from . import settings, subscriptions
 from .auth import require_auth
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -14,7 +14,7 @@ INSTALLER = ROOT / "desktop" / "release" / "TechPrep-Setup.exe"
 CA_CERTIFICATE = ROOT / ".certs" / "ca.crt"
 INSTALLER_NAME = "TechPrep-Setup.exe"
 MANIFEST_NAME = "desktop-release.json"
-router = APIRouter(prefix="/api/v1/downloads", dependencies=[Depends(require_auth)])
+router = APIRouter(prefix="/api/v1/downloads", dependencies=[Depends(require_auth), Depends(subscriptions.require_subscription)])
 HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 UNAVAILABLE = "The Windows installer is not available yet. Please try again later."
 _verified: dict[tuple[str, int, int], str] = {}

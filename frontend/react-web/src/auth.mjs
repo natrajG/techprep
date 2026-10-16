@@ -40,13 +40,15 @@ export async function loadConfig(api, fetchImpl = fetch) {
 // True only when the saved token is accepted by the backend. A network error is thrown, not treated as signed out.
 export async function checkSession(api, fetchImpl = fetch, storage = localStorage) {
   const token = getToken(storage);
-  if (!token) return false;
+  if (!token) return { ok: false, user: null };
   const response = await fetchImpl(`${api}/api/v1/me`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) {
     clearToken(storage);
-    return false;
+    return { ok: false, user: null };
   }
-  return response.ok;
+  if (!response.ok) return { ok: false, user: null };
+  const data = await response.json().catch(() => ({}));
+  return { ok: true, user: data.user || null };
 }
 
 export async function authFetch(url, init = {}, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {

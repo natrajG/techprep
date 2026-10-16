@@ -28,8 +28,14 @@ export default function Login({ onSubmit, onSignUp, minimumPassword = 8 }) {
   return (
     <main style={styles.page}>
       <form onSubmit={submit} style={styles.card}>
-        <h2 style={{ margin: "0 0 4px" }}>TechPrep</h2>
-        <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: 14 }}>{creating ? "Create an account." : "Sign in to open the assistant."}</p>
+        <div style={styles.brandRow}>
+          <span style={styles.logoDot}></span>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>TechPrep</h2>
+        </div>
+        <p style={{ margin: "4px 0 16px", color: "#94a3b8", fontSize: 13.5 }}>
+          {creating ? "Create an account to begin." : "Sign in to open the assistant."}
+        </p>
+
         <label style={styles.label}>Username
           <input style={styles.input} value={username} autoComplete="username" autoFocus required
             onChange={(e) => setUsername(e.target.value)} />
@@ -44,8 +50,10 @@ export default function Login({ onSubmit, onSignUp, minimumPassword = 8 }) {
               onChange={(e) => setConfirm(e.target.value)} />
           </label>
         )}
-        {error && <p role="alert" style={{ color: "#b91c1c", margin: "0 0 10px", fontSize: 14 }}>{error}</p>}
-        <button type="submit" style={styles.button} disabled={busy}>{busy ? "Please wait…" : creating ? "Create account" : "Sign in"}</button>
+        {error && <p role="alert" style={{ color: "#f87171", margin: "0 0 10px", fontSize: 13 }}>{error}</p>}
+        <button type="submit" style={styles.button} disabled={busy}>
+          {busy ? "Please wait…" : creating ? "Create account" : "Sign in"}
+        </button>
         {onSignUp && (
           <button type="button" style={styles.link} disabled={busy}
             onClick={() => { setCreating(!creating); setError(""); }}>
@@ -59,11 +67,62 @@ export default function Login({ onSubmit, onSignUp, minimumPassword = 8 }) {
 }
 
 const styles = {
-  page: { fontFamily: "system-ui, sans-serif", minHeight: "100vh", display: "grid", placeItems: "center", background: "#f1f5f9", color: "#0f172a" },
-  card: { width: 320, maxWidth: "90vw", background: "#fff", padding: 24, borderRadius: 12, boxShadow: "0 4px 24px #0f172a1a", boxSizing: "border-box" },
-  label: { display: "block", fontSize: 13, marginBottom: 12 },
-  input: { display: "block", width: "100%", marginTop: 4, padding: 9, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15 },
-  button: { width: "100%", padding: 10, border: 0, borderRadius: 8, background: "#2563eb", color: "#fff", fontSize: 15, cursor: "pointer" },
-  link: { width: "100%", marginTop: 10, padding: 6, border: 0, background: "none", color: "#2563eb", fontSize: 14, cursor: "pointer" },
-  privacy: { display: "block", marginTop: 14, color: "#2563eb", fontSize: 13, textAlign: "center" },
+  page: {
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    minHeight: "100vh",
+    display: "grid",
+    placeItems: "center",
+    background: "#080a11",
+    color: "#f8fafc",
+    padding: 16,
+    boxSizing: "border-box",
+  },
+  card: {
+    width: 360,
+    maxWidth: "92vw",
+    background: "linear-gradient(145deg, #10131e 0%, #0d0f17 100%)",
+    padding: 28,
+    borderRadius: 16,
+    border: "1px solid rgba(255, 255, 255, 0.1)",
+    boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.15)",
+    boxSizing: "border-box",
+  },
+  brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
+  logoDot: { width: 8, height: 8, borderRadius: "50%", background: "#4f46e5", boxShadow: "0 0 10px #6366f1" },
+  label: { display: "block", fontSize: 13, marginBottom: 14, color: "#cbd5e1" },
+  input: {
+    display: "block",
+    width: "100%",
+    marginTop: 6,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid rgba(255, 255, 255, 0.15)",
+    background: "rgba(255, 255, 255, 0.05)",
+    color: "#ffffff",
+    boxSizing: "border-box",
+    fontSize: 14,
+  },
+  button: {
+    width: "100%",
+    padding: "11px",
+    border: 0,
+    borderRadius: 8,
+    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    boxShadow: "0 4px 15px rgba(99, 102, 241, 0.35)",
+  },
+  link: {
+    width: "100%",
+    marginTop: 12,
+    padding: 6,
+    border: 0,
+    background: "none",
+    color: "#818cf8",
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  privacy: { display: "block", marginTop: 16, color: "#64748b", fontSize: 12, textAlign: "center", textDecoration: "none" },
 };

@@ -1,6 +1,6 @@
 // Desktop shell: a frameless, transparent, optionally always-on-top window that hosts the web UI.
 // It runs independently of any browser tab; capture protection is platform-dependent.
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net } = require("electron");
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net, shell } = require("electron");
 const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const os = require("os");
@@ -176,6 +176,13 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("minimize", () => win.minimize());
   ipcMain.handle("close", () => win.close());
+  ipcMain.handle("open-external", (_event, url) => {
+    if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+      return true;
+    }
+    return false;
+  });
 
   try {
     await ensureBackend();

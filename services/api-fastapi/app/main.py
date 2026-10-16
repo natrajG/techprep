@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import auth, downloads, llm, rate_limit, settings, users
+from . import auth, downloads, llm, rate_limit, settings, subscriptions, users
 from .prompts import EVALUATE_PROMPT, QUESTION_EXTRACT_PROMPT, SYSTEM_PROMPT
 
 @asynccontextmanager
@@ -27,6 +27,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="TechPrep API", version="0.2.0", lifespan=lifespan)
 app.include_router(downloads.router)
+app.include_router(subscriptions.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[] if settings.production() else ["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -108,7 +109,7 @@ def me(user: str = Depends(auth.require_auth)) -> dict:
     return {"user": user}
 
 
-@app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access)])
+@app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
 async def transcribe(audio: UploadFile = File(...)) -> dict:
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     if len(data) > MAX_AUDIO_BYTES:
@@ -118,7 +119,7 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
     return {"text": await llm.transcribe(audio.filename or "chunk.webm", data)}
 
 
-@app.post("/api/v1/answer", dependencies=[Depends(rate_limit.ai_access)])
+@app.post("/api/v1/answer", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
 async def answer(req: AnswerRequest) -> StreamingResponse:
     question = req.question.strip()
     if not question:
@@ -163,7 +164,7 @@ async def answer(req: AnswerRequest) -> StreamingResponse:
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
-@app.post("/api/v1/evaluate", dependencies=[Depends(rate_limit.ai_access)])
+@app.post("/api/v1/evaluate", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
 async def evaluate(req: EvaluateRequest) -> dict:
     raw = await llm.complete(
         EVALUATE_PROMPT.format(question=req.question, answer=req.answer),

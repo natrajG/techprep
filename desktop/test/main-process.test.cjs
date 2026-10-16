@@ -261,5 +261,5 @@ test("preload retains existing controls and exposes narrow capture IPC methods",
   await exposed.loginSucceeded();
   await exposed.signOut();
   assert.deepEqual(calls.slice(-2), [["login-succeeded"], ["sign-out"]]);
-  for (const name of ["setAlwaysOnTop", "minimize", "close"]) assert.equal(typeof exposed[name], "function");
+  for (const name of ["setAlwaysOnTop", "minimize", "close", "openExternal"]) assert.equal(typeof exposed[name], "function");
 });

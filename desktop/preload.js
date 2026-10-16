@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld("desktop", {
   signOut: () => ipcRenderer.invoke("sign-out"),
   minimize: () => ipcRenderer.invoke("minimize"),
   close: () => ipcRenderer.invoke("close"),
+  openExternal: (url) => ipcRenderer.invoke("open-external", url),
 });
