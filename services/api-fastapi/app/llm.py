@@ -60,5 +60,7 @@ async def transcribe(filename: str, data: bytes) -> str:
     c = client()
     if c is None:
         return ""
-    result = await c.audio.transcriptions.create(model=STT_MODEL, file=(filename, data))
+    # Force English-only transcription: avoids Whisper mis-detecting/mixing other spoken languages
+    # picked up from background noise, and improves speed/accuracy for English interviews.
+    result = await c.audio.transcriptions.create(model=STT_MODEL, file=(filename, data), language="en")
     return result.text

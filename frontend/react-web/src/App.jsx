@@ -156,33 +156,60 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       } else {
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
-            audio: true,
-            video: true,
+            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+            // Only audio is needed; the smallest possible video track still satisfies Chromium's
+            // requirement to pair a video track with Windows/macOS system-audio loopback, and
+            // keeping it tiny/low-rate/cursor-free avoids the brief cursor flicker a full-screen
+            // capture can cause. It is stopped immediately below once the audio track is secured.
+            video: { frameRate: 1, width: 2, height: 2, cursor: "never" },
           });
         } catch (displayErr) {
           // If display media fails or has invalid constraints, fall back to default user media audio
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
           });
         }
       }
-      const tracks = stream.getAudioTracks();
-      if (!tracks.length) {
+      const audioTracks = stream.getAudioTracks();
+      if (!audioTracks.length) {
         stream.getTracks().forEach((t) => t.stop());
         setStatus(desktop
           ? "No system audio is available. Check your output device/audio permissions and restart TechPrep."
           : "No audio shared. Pick the meeting tab and enable tab audio, or on Windows select the entire screen and enable system audio.");
         return;
       }
+      // Stop any video track right away: we only need audio, and releasing the video track promptly
+      // stops the OS screen-duplication capture that can otherwise cause a brief cursor flicker.
+      stream.getVideoTracks().forEach((t) => t.stop());
       streamRef.current = stream;
-      stream.getTracks().forEach((track) => { track.onended = stopListening; });
-      const audioOnly = new MediaStream(tracks);
+      audioTracks.forEach((track) => { track.onended = stopListening; });
+      const audioOnly = new MediaStream(audioTracks);
       audioCtxRef.current = new AudioContext();
       await audioCtxRef.current.resume();
+
+      // Light noise-reduction chain: a high-pass filter removes low-frequency rumble/hum (fans, AC),
+      // and a gentle dynamics compressor suppresses quiet, constant background noise without
+      // clipping the interviewer's voice.
+      const source = audioCtxRef.current.createMediaStreamSource(audioOnly);
+      const highpass = audioCtxRef.current.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 100;
+      const compressor = audioCtxRef.current.createDynamicsCompressor();
+      compressor.threshold.value = -50;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+      const destination = audioCtxRef.current.createMediaStreamDestination();
+      source.connect(highpass);
+      highpass.connect(compressor);
+      compressor.connect(destination);
+
       const analyser = audioCtxRef.current.createAnalyser();
       analyser.fftSize = 2048;
-      audioCtxRef.current.createMediaStreamSource(audioOnly).connect(analyser);
-      recordCycle(audioOnly, analyser);
+      compressor.connect(analyser);
+
+      recordCycle(destination.stream, analyser);
       setListening(true);
       setStatus("Listening…");
     } catch (e) {

@@ -90,12 +90,16 @@ function createWindow() {
   });
   const created = overlay.window;
   win = created;
+  // Stealth: hide the macOS Dock icon and Cmd+Tab entry while the HUD overlay is active.
+  if (process.platform === "darwin" && app.dock) app.dock.hide();
   created.on("closed", () => {
     if (win === created) { win = null; overlay = null; }
   });
 }
 
 function openLogin() {
+  // Restore the Dock icon/Cmd+Tab entry (hidden during the stealth overlay) so the sign-in window is reachable.
+  if (process.platform === "darwin" && app.dock) app.dock.show();
   const url = new URL(APP_URL);
   url.searchParams.set("login", "1");
   loginWin = new BrowserWindow({

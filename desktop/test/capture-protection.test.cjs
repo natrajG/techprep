@@ -22,6 +22,7 @@ class MockWindow extends EventEmitter {
   }
   isDestroyed() { return this.destroyed; }
   setAlwaysOnTop(...args) { this.calls.push(["top", ...args]); }
+  setSkipTaskbar(...args) { this.calls.push(["skipTaskbar", ...args]); }
   loadURL(url) { this.calls.push(["load", url]); return Promise.resolve(); }
   show() { this.calls.push(["show"]); }
 }
@@ -131,8 +132,8 @@ for (const readyFirst of [true, false]) {
     assert.equal(overlay.window.options.transparent, true);
     assert.equal(overlay.window.options.frame, false);
     assert.equal(overlay.window.options.minWidth, 320);
-    assert.deepEqual(overlay.window.calls.slice(0, 3), [
-      ["top", true, "floating"], ["protection", false], ["load", "http://localhost/"],
+    assert.deepEqual(overlay.window.calls.slice(0, 4), [
+      ["top", true, "floating"], ["skipTaskbar", true], ["protection", false], ["load", "http://localhost/"],
     ]);
     if (readyFirst) overlay.window.emit("ready-to-show");
     else overlay.restore(true);
@@ -153,7 +154,7 @@ test("recreated overlays apply cached preference before loading, then restore st
   first.window.destroyed = true;
   first.window.emit("closed");
   const second = createOverlayWindow(options);
-  assert.deepEqual(second.window.calls[1], ["protection", true]);
+  assert.deepEqual(second.window.calls[2], ["protection", true]);
   second.restore(false);
   second.window.emit("ready-to-show");
   assert.equal(protection.getState().status, "disabled");

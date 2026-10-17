@@ -8,6 +8,7 @@ function createOverlayWindow({ BrowserWindow, protection, preload, url, onLoadEr
     frame: false,
     transparent: true,
     alwaysOnTop: true,
+    skipTaskbar: true, // stealth: never show an icon/entry in the Windows taskbar or Alt+Tab switcher
     backgroundColor: "#00000000",
     title: "TechPrep",
     webPreferences: { preload, contextIsolation: true },
@@ -23,6 +24,7 @@ function createOverlayWindow({ BrowserWindow, protection, preload, url, onLoadEr
     }
   }
   window.setAlwaysOnTop(true, "floating");
+  window.setSkipTaskbar(true); // Windows requires this call in addition to the constructor option to fully hide it
   protection.attach(window);
   window.once("ready-to-show", () => {
     ready = true;

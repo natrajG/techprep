@@ -42,6 +42,7 @@ async function boot({
     }
     setContentProtection(value) { this.calls.push(value); }
     setAlwaysOnTop() {}
+    setSkipTaskbar() {}
     isDestroyed() { return false; }
     loadURL(url) { this.url = url; return Promise.resolve(); }
     show() { this.shown = true; }
