@@ -109,27 +109,31 @@ def me(user: str = Depends(auth.require_auth)) -> dict:
     return {"user": user, "is_admin": subscriptions.is_admin(user)}
 
 
-@app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
-async def transcribe(audio: UploadFile = File(...)) -> dict:
+@app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access)])
+async def transcribe(audio: UploadFile = File(...), user: str = Depends(subscriptions.require_subscription)) -> dict:
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Audio chunk too large")
     if len(data) < 1000:
         return {"text": ""}
+    subscriptions.start_ai_call(user)
     return {"text": await llm.transcribe(audio.filename or "chunk.webm", data)}
 
 
-@app.post("/api/v1/answer", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
-async def answer(req: AnswerRequest) -> StreamingResponse:
+@app.post("/api/v1/answer", dependencies=[Depends(rate_limit.ai_access)])
+async def answer(req: AnswerRequest, user: str = Depends(subscriptions.require_subscription)) -> StreamingResponse:
+    record_usage = lambda prompt, completion: users.record_token_usage(user, prompt, completion)
     question = req.question.strip()
+    if not question and not req.transcript.strip():
+        raise HTTPException(400, "Provide a question or transcript")
+    subscriptions.start_ai_call(user)
     if not question:
-        if not req.transcript.strip():
-            raise HTTPException(400, "Provide a question or transcript")
         try:
             question = (
-                await llm.complete(QUESTION_EXTRACT_PROMPT.format(transcript=req.transcript[-4000:]))
+                await llm.complete(QUESTION_EXTRACT_PROMPT.format(transcript=req.transcript[-4000:]), on_usage=record_usage)
             ).strip()
         except Exception:
+            logger.exception("Question extraction failed")
             question = ""
         question = question or req.transcript[-500:]
 
@@ -149,7 +153,7 @@ async def answer(req: AnswerRequest) -> StreamingResponse:
     async def events():
         yield f"event: question\ndata: {json.dumps(question)}\n\n"
         try:
-            async for token in llm.stream_chat(system, question, history):
+            async for token in llm.stream_chat(system, question, history, on_usage=record_usage):
                 yield f"data: {json.dumps(token)}\n\n"
         except Exception as e:  # surface provider errors (quota, auth, network) in the UI
             if settings.production():
@@ -164,11 +168,12 @@ async def answer(req: AnswerRequest) -> StreamingResponse:
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
-@app.post("/api/v1/evaluate", dependencies=[Depends(rate_limit.ai_access), Depends(subscriptions.require_subscription)])
-async def evaluate(req: EvaluateRequest) -> dict:
+@app.post("/api/v1/evaluate", dependencies=[Depends(rate_limit.ai_access)])
+async def evaluate(req: EvaluateRequest, user: str = Depends(subscriptions.require_ai_call)) -> dict:
     raw = await llm.complete(
         EVALUATE_PROMPT.format(question=req.question, answer=req.answer),
         json_mode=True,
+        on_usage=lambda prompt, completion: users.record_token_usage(user, prompt, completion),
     )
     try:
         return json.loads(raw)

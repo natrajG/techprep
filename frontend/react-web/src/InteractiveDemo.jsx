@@ -118,7 +118,7 @@ export default function InteractiveDemo({ onClose, onGoToPricing }) {
               if (onGoToPricing) onGoToPricing();
             }}
           >
-            Unlock Access & View Plans (from ₹199) →
+            Unlock Access & View Plans →
           </button>
         </div>
       </div>

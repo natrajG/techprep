@@ -71,7 +71,25 @@ Roles: **Lead Python Developer** and **Python Full Stack Developer**.
    Programming requests return just the code by default; ask "explain it" afterward for a concise explanation.
    The overlay keeps the last two Q&A turns in memory for follow-ups, without persisting them or resending the full conversation.
 
+   On Windows, **Listen** defaults to system audio plus microphone. Change the source to
+   **Microphone only** or **System audio** under Quick Settings or the profile's Stealth & HUD
+   settings while stopped. Microphone-only avoids screen capture; system audio (including the
+   default combined mode) requires a brief Electron screen-capture start, which may still affect
+   the cursor on some Windows setups. Failed system capture no longer silently switches to the
+   microphone. Transcription receives technical vocabulary hints, including Django, to improve
+   recognition of short interview clips.
+
 API: `POST /api/v1/transcribe` (multipart `audio`), `POST /api/v1/answer` (SSE stream), `POST /api/v1/evaluate` (practice scoring).
+The monthly plan defaults to 30 one-hour calls within 30 days. A call window begins on the first
+AI or audio request and subsequent requests within that hour use the same call; the hourly
+plan includes one call window (60 minutes by default). An administrator signed in with
+`APP_USERNAME` can edit plan prices, monthly call allowance, hourly call duration, and monthly
+plan duration in the account profile or web dashboard. Changes apply only to newly created
+orders; existing orders and subscriptions retain their purchased terms. Previously purchased
+unlimited monthly subscriptions remain unlimited. The account profile shows remaining calls and provider-reported
+AI input/output token usage since tracking began. Audio transcription is not included in the
+token count, and tokens have no separate quota. Set `ENFORCE_SUBSCRIPTIONS=true` to require
+an active paid plan for AI endpoints; existing paid plans always respect their call limits.
 The public privacy policy is available at `/privacy/` without signing in; deploy the latest
 web build before using its URL in a Store listing.
 

@@ -21,8 +21,12 @@ const desktop = window.desktop; // exposed by the Electron preload script
 const useDeviceInput = desktop?.platform === "linux";
 
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
+const hasAvailableCall = (subscription) =>
+  subscription?.status === "active" &&
+  (subscription.calls_remaining === null || subscription.calls_remaining > 0 ||
+    subscription.call_time_remaining_seconds > 0);
 
-export default function App({ onSignOut, currentUser = null, initialSubscription = null, localNetwork = true, storeUrl = null }) {
+export default function App({ onSignOut, currentUser = null, isAdmin = false, initialSubscription = null, localNetwork = true, storeUrl = null }) {
   const [resume, setResume] = useState(load("resume"));
   const [jd, setJd] = useState(load("jd"));
   const [transcript, setTranscript] = useState("");
@@ -30,6 +34,7 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [listening, setListening] = useState(false);
+  const [audioMode, setAudioMode] = useState(load("audioMode", desktop?.platform === "win32" ? "both" : "system"));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const historyRef = useRef([]);
@@ -43,16 +48,20 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
   const [captureError, setCaptureError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [subscription, setSubscription] = useState(initialSubscription);
-  const [subExpired, setSubExpired] = useState(!initialSubscription || initialSubscription.status !== "active");
+  const [subExpired, setSubExpired] = useState(!hasAvailableCall(initialSubscription));
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
 
   useEffect(() => {
     fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
       .then((data) => {
+        setTokenUsage(data.token_usage);
         if (data.has_active && data.subscription) {
           setSubscription(data.subscription);
-          setSubExpired(false);
+          setSubExpired(!hasAvailableCall(data.subscription));
         } else {
           setSubscription(null);
           setSubExpired(true);
@@ -60,6 +69,21 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       })
       .catch(() => {});
   }, []);
+
+  function openProfile() {
+    setShowProfileModal(true);
+    setProfileLoading(true);
+    setProfileError("");
+    setTokenUsage(null);
+    fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
+      .then((data) => {
+        setSubscription(data.subscription);
+        setSubExpired(!hasAvailableCall(data.subscription));
+        setTokenUsage(data.token_usage);
+      })
+      .catch((error) => setProfileError(`Cannot load usage: ${error.message}`))
+      .finally(() => setProfileLoading(false));
+  }
 
   useEffect(() => {
     if (!desktop) return;
@@ -92,6 +116,7 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
   useEffect(() => localStorage.setItem("resume", resume), [resume]);
   useEffect(() => localStorage.setItem("jd", jd), [jd]);
   useEffect(() => localStorage.setItem("opacity", String(opacity)), [opacity]);
+  useEffect(() => localStorage.setItem("audioMode", audioMode), [audioMode]);
   useEffect(() => {
     if (!desktop) return;
     localStorage.setItem("onTop", String(onTop));
@@ -146,75 +171,74 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       handleRenewClick();
       return;
     }
+    const streams = [];
+    const warnings = [];
     try {
-      let stream;
-      if (useDeviceInput) {
-        // Processing off: echo cancellation would subtract the very system audio we want to capture.
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-      } else {
+      if (audioMode !== "microphone") {
+        let system;
         try {
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
-            // Only audio is actually used; Chromium still requires a video track to be requested to
-            // satisfy Windows/macOS system-audio loopback. Keep this unconstrained (plain `true`) —
-            // tight numeric constraints (fixed width/height/cursor) can be rejected by the desktop
-            // capture source and throw "Invalid capture constraints" again. The video track is
-            // stopped immediately below once the audio track is secured, which is what actually
-            // reduces the OS capture overhead/cursor flicker, without risking capture failure.
-            video: true,
+          system = useDeviceInput
+            ? await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+            })
+            : await navigator.mediaDevices.getDisplayMedia({
+              audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+              video: true,
+            });
+          system.getVideoTracks().forEach((track) => {
+            track.stop();
+            system.removeTrack(track);
           });
-        } catch (displayErr) {
-          // If display media fails or has invalid constraints, fall back to default user media audio
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
-          });
+          if (!system.getAudioTracks().length) {
+            throw new Error("No system audio was shared.");
+          }
+          streams.push(system);
+        } catch (error) {
+          system?.getTracks().forEach((track) => track.stop());
+          if (audioMode !== "both") throw error;
+          warnings.push(`System audio unavailable: ${error.message}`);
         }
       }
-      const audioTracks = stream.getAudioTracks();
-      if (!audioTracks.length) {
-        stream.getTracks().forEach((t) => t.stop());
-        setStatus(desktop
-          ? "No system audio is available. Check your output device/audio permissions and restart TechPrep."
-          : "No audio shared. Pick the meeting tab and enable tab audio, or on Windows select the entire screen and enable system audio.");
-        return;
+      if (audioMode === "both" || audioMode === "microphone") {
+        let mic;
+        try {
+          mic = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+          });
+          if (!mic.getAudioTracks().length) throw new Error("No microphone audio is available.");
+          streams.push(mic);
+        } catch (error) {
+          mic?.getTracks().forEach((track) => track.stop());
+          if (audioMode !== "both") throw error;
+          warnings.push(`Microphone unavailable: ${error.message}`);
+        }
       }
-      // Stop any video track right away: we only need audio, and releasing the video track promptly
-      // stops the OS screen-duplication capture that can otherwise cause a brief cursor flicker.
-      stream.getVideoTracks().forEach((t) => t.stop());
-      streamRef.current = stream;
+      if (!streams.length) throw new Error(warnings.join(" "));
+      const audioTracks = streams.flatMap((stream) => stream.getAudioTracks());
+      streamRef.current = new MediaStream(audioTracks);
       audioTracks.forEach((track) => { track.onended = stopListening; });
-      const audioOnly = new MediaStream(audioTracks);
       audioCtxRef.current = new AudioContext();
       await audioCtxRef.current.resume();
 
-      // Light noise-reduction chain: a high-pass filter removes low-frequency rumble/hum (fans, AC),
-      // and a gentle dynamics compressor suppresses quiet, constant background noise without
-      // clipping the interviewer's voice.
-      const source = audioCtxRef.current.createMediaStreamSource(audioOnly);
-      const highpass = audioCtxRef.current.createBiquadFilter();
-      highpass.type = "highpass";
-      highpass.frequency.value = 100;
-      const compressor = audioCtxRef.current.createDynamicsCompressor();
-      compressor.threshold.value = -50;
-      compressor.knee.value = 30;
-      compressor.ratio.value = 12;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.25;
       const destination = audioCtxRef.current.createMediaStreamDestination();
-      source.connect(highpass);
-      highpass.connect(compressor);
-      compressor.connect(destination);
-
       const analyser = audioCtxRef.current.createAnalyser();
       analyser.fftSize = 2048;
-      compressor.connect(analyser);
+      for (const stream of streams) {
+        const source = audioCtxRef.current.createMediaStreamSource(stream);
+        const highpass = audioCtxRef.current.createBiquadFilter();
+        highpass.type = "highpass";
+        highpass.frequency.value = 80;
+        source.connect(highpass);
+        highpass.connect(destination);
+        highpass.connect(analyser);
+      }
 
       recordCycle(destination.stream, analyser);
       setListening(true);
-      setStatus("Listening…");
+      if (warnings.length) console.warn("Audio capture is partial:", warnings.join(" "));
+      setStatus(warnings.length ? `Listening with one source. ${warnings.join(" ")}` : "Listening…");
     } catch (e) {
+      streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
       // Logged via console.error so it lands in the desktop app's persistent log file
       // (desktop/main.js forwards renderer console output there) for support/debugging.
       console.error("startListening failed:", e);
@@ -247,7 +271,10 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: manualQ, transcript, resume, job_description: jd, history: historyRef.current }),
       }, fetch, localStorage, notifyExpired);
-      if (!r.ok) throw new Error((await r.json()).detail);
+      if (!r.ok) {
+        const detail = (await r.json()).detail;
+        throw new Error(`HTTP ${r.status}: ${detail}`);
+      }
       const reader = r.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -289,7 +316,7 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
     } catch (e) {
       if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
         setSubExpired(true);
-        setAnswer("⚠️ Subscription or 1-hour session expired. Please renew access to continue.");
+        setAnswer("⚠️ Subscription expired or call allowance used. Please renew access to continue.");
       } else {
         setAnswer("Error: " + e.message);
       }
@@ -314,7 +341,7 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
     return out;
   })();
   const sourceHint = desktop?.platform === "win32"
-    ? "Captures audio playing through Windows (WASAPI loopback). Only audio is uploaded for transcription."
+    ? "Both records meeting audio and your microphone. Microphone-only avoids Windows screen capture and its cursor flicker; system audio requires a brief screen-capture start."
     : desktop?.platform === "darwin"
       ? "Captures desktop audio on macOS when your system route permits loopback."
       : !desktop
@@ -336,7 +363,7 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
         <span className="hud-spacer" />
         <button
           className="hud-pill hud-profile-pill"
-          onClick={() => setShowProfileModal(true)}
+          onClick={openProfile}
           title="Account Profile & Credits"
         >
           <span className="hud-profile-dot" style={{ background: subscription ? "#4ade80" : "#f87171" }} />
@@ -369,10 +396,10 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       {subExpired && (
         <div className="hud-sub-expired">
           <span style={{ fontSize: 13, color: "#fecaca" }}>
-            ⚠️ <strong>Subscription Inactive / Expired.</strong> Renew to enable AI answers & transcription.
+            ⚠️ <strong>Subscription inactive or calls exhausted.</strong> Renew to enable AI answers &amp; transcription.
           </span>
           <button type="button" className="hud-renew-btn" onClick={handleRenewClick}>
-            Renew (from ₹199)
+            Renew Plan
           </button>
         </div>
       )}
@@ -380,12 +407,13 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       {showPricingModal && (
         <SubscriptionPricing
           currentSubscription={subscription}
+          allowQrUpload={isAdmin}
           onClose={() => setShowPricingModal(false)}
           onPaymentSuccess={() => {
             setShowPricingModal(false);
             setSubExpired(false);
             fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
-              .then((d) => setSubscription(d.subscription))
+              .then((d) => { setSubscription(d.subscription); setTokenUsage(d.token_usage); })
               .catch(() => {});
           }}
         />
@@ -394,7 +422,11 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       {showProfileModal && (
         <UserProfileModal
           user={currentUser}
+          isAdmin={isAdmin}
           subscription={subscription}
+          tokenUsage={tokenUsage}
+          profileLoading={profileLoading}
+          profileError={profileError}
           onClose={() => setShowProfileModal(false)}
           onOpenPricing={() => {
             setShowProfileModal(false);
@@ -416,6 +448,9 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
           capturePending={capturePending}
           captureError={captureError}
           requestCaptureProtection={requestCaptureProtection}
+          audioMode={audioMode}
+          setAudioMode={setAudioMode}
+          listening={listening}
         />
       )}
 
@@ -429,6 +464,15 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       {menuOpen && (
         <section className="hud-card hud-menu">
           <p className="hud-muted" style={{ marginTop: 0 }}>{sourceHint}</p>
+          {desktop?.platform === "win32" && (
+            <label className="hud-muted">Audio source:{" "}
+              <select value={audioMode} disabled={listening} onChange={(e) => setAudioMode(e.target.value)}>
+                <option value="both">System + microphone</option>
+                <option value="system">System audio</option>
+                <option value="microphone">Microphone only (no screen capture)</option>
+              </select>
+            </label>
+          )}
           {useDeviceInput && (
             <p className="hud-muted" title="Set by the desktop app. Restart it after changing your output device.">
               Audio source: {/\.monitor$/.test(desktop.audioSource) ? "🔊 system audio" : "🎤"} ({desktop.audioSource})

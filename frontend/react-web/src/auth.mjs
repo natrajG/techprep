@@ -48,7 +48,7 @@ export async function checkSession(api, fetchImpl = fetch, storage = localStorag
   }
   if (!response.ok) return { ok: false, user: null };
   const data = await response.json().catch(() => ({}));
-  return { ok: true, user: data.user || null };
+  return { ok: true, user: data.user || null, isAdmin: data.is_admin === true };
 }
 
 export async function authFetch(url, init = {}, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {

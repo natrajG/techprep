@@ -1,10 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import InteractiveDemo from "./InteractiveDemo";
 import SubscriptionPricing from "./SubscriptionPricing";
+import { fetchPlans } from "./subscriptions.mjs";
+
+const API = import.meta.env.VITE_API_URL || "";
 
 export default function Landing({ onSignIn, onSignUp, storeUrl }) {
   const [showDemo, setShowDemo] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [planError, setPlanError] = useState("");
+  const hourly = plans.find((plan) => plan.id === "hourly_call");
+  const monthly = plans.find((plan) => plan.id === "monthly");
+
+  useEffect(() => {
+    fetchPlans(API).then((data) => setPlans(data.plans))
+      .catch((error) => setPlanError(`Cannot load prices: ${error.message}`));
+  }, []);
 
   return (
     <main style={styles.page}>
@@ -19,7 +31,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
             Interactive Demo
           </button>
           <button style={styles.navBtn} onClick={() => setShowPricing(true)}>
-            Pricing (₹199 / Call)
+            Pricing
           </button>
           <button style={styles.navBtn} onClick={onSignIn}>
             Sign In
@@ -53,8 +65,8 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
 
         <div style={styles.statsRow}>
           <div style={styles.statItem}>
-            <strong>₹199</strong>
-            <span>Per Call / 1-Hr Window</span>
+            <strong>{hourly ? `₹${hourly.amount.toLocaleString()}` : "—"}</strong>
+            <span>Per Call / {hourly?.duration_minutes ?? "—"}-Min Window</span>
           </div>
           <div style={styles.statDivider}></div>
           <div style={styles.statItem}>
@@ -102,36 +114,38 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
           Why pay $100+ USD to US competitors when you can prepare with local UPI convenience?
         </p>
         <div style={styles.pricingCards}>
-          <div
+          {planError && <p role="alert" style={{ color: "#fca5a5" }}>{planError}</p>}
+          {!plans.length && !planError && <p>Loading current plans…</p>}
+          {hourly && <div
             style={{ ...styles.priceCardSmall, cursor: "pointer" }}
             onClick={() => setShowPricing(true)}
           >
             <span style={styles.priceCardBadge}>PAY AS YOU GO</span>
-            <h3 style={{ margin: "6px 0", fontSize: 20 }}>1-Hour Call Session</h3>
-            <p style={{ fontSize: 28, fontWeight: 800, color: "#38bdf8", margin: "4px 0 12px" }}>₹199</p>
+            <h3 style={{ margin: "6px 0", fontSize: 20 }}>{hourly.name}</h3>
+            <p style={{ fontSize: 28, fontWeight: 800, color: "#38bdf8", margin: "4px 0 12px" }}>₹{hourly.amount.toLocaleString()}</p>
             <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
-              Perfect for crucial interview rounds. Reconnects within 60 mins stay covered.
+              Perfect for crucial interview rounds. Reconnects within {hourly.duration_minutes} minutes stay covered.
             </p>
             <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%" }}>
-              Get Started (₹199) →
+              Get Started (₹{hourly.amount.toLocaleString()}) →
             </button>
-          </div>
-          <div
+          </div>}
+          {monthly && <div
             style={{ ...styles.priceCardSmall, borderColor: "rgba(165, 180, 252, 0.4)", cursor: "pointer" }}
             onClick={() => setShowPricing(true)}
           >
             <span style={{ ...styles.priceCardBadge, background: "rgba(234, 179, 8, 0.2)", color: "#fde047" }}>
               MOST POPULAR
             </span>
-            <h3 style={{ margin: "6px 0", fontSize: 20 }}>Monthly Pro</h3>
-            <p style={{ fontSize: 28, fontWeight: 800, color: "#a5b4fc", margin: "4px 0 12px" }}>₹1,999</p>
+            <h3 style={{ margin: "6px 0", fontSize: 20 }}>{monthly.name}</h3>
+            <p style={{ fontSize: 28, fontWeight: 800, color: "#a5b4fc", margin: "4px 0 12px" }}>₹{monthly.amount.toLocaleString()}</p>
             <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
-              Full 30 days unlimited interview preparation, resume tuning & mock sessions.
+              {monthly.call_limit} one-hour calls within {monthly.duration_days} days for interview preparation, resume tuning & mock sessions.
             </p>
             <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%", background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}>
-              Get Unlimited (₹1,999) →
+              Get {monthly.call_limit} Calls (₹{monthly.amount.toLocaleString()}) →
             </button>
-          </div>
+          </div>}
         </div>
       </section>
 

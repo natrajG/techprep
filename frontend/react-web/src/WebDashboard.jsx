@@ -1,10 +1,13 @@
 import { useState } from "react";
 import DesktopDownload from "./DesktopDownload";
 import SubscriptionPricing from "./SubscriptionPricing";
+import AdminPlans from "./AdminPlans";
 
 export default function WebDashboard({
   user,
+  isAdmin,
   subscription,
+  tokenUsage,
   onSignOut,
   storeUrl,
   localNetwork,
@@ -12,6 +15,8 @@ export default function WebDashboard({
 }) {
   const [showPricing, setShowPricing] = useState(false);
   const hasActiveSub = subscription && subscription.status === "active";
+  const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
+    subscription.call_time_remaining_seconds === 0;
   const timeLeftMinutes = subscription?.time_remaining_seconds
     ? Math.ceil(subscription.time_remaining_seconds / 60)
     : null;
@@ -60,8 +65,8 @@ export default function WebDashboard({
           <section style={styles.card}>
             <div style={styles.cardHeader}>
               <h2 style={styles.cardTitle}>💳 Subscription &amp; Credits</h2>
-              <span style={hasActiveSub ? styles.activeBadge : styles.inactiveBadge}>
-                {hasActiveSub ? "Active" : "Action Required"}
+              <span style={hasActiveSub && !callsExhausted ? styles.activeBadge : styles.inactiveBadge}>
+                {callsExhausted ? "Calls Used" : hasActiveSub ? "Active" : "Action Required"}
               </span>
             </div>
 
@@ -81,7 +86,16 @@ export default function WebDashboard({
                   <div style={styles.detailItem}>
                     <span style={styles.detailLabel}>Session Validity</span>
                     <strong style={styles.detailValue}>
-                      {timeLeftMinutes !== null ? `${timeLeftMinutes} mins remaining` : "1-Hour Call Window"}
+                      {subscription.plan_id === "monthly"
+                        ? `${Math.ceil(subscription.time_remaining_seconds / 86400)} days remaining`
+                        : timeLeftMinutes !== null ? `${timeLeftMinutes} mins remaining` : "Starts on first use"}
+                    </strong>
+                  </div>
+                  <div style={styles.detailItem}>
+                    <span style={styles.detailLabel}>Calls remaining</span>
+                    <strong style={styles.detailValue}>
+                      {subscription.calls_total === null ? "Unlimited (existing plan)"
+                        : `${subscription.calls_remaining} of ${subscription.calls_total}`}
                     </strong>
                   </div>
                   <div style={styles.detailItem}>
@@ -97,13 +111,41 @@ export default function WebDashboard({
             ) : (
               <div style={styles.subInactiveContent}>
                 <p style={styles.inactiveText}>
-                  You do not have an active session plan. Select ₹199 per call or ₹1,999 monthly unlimited to start.
+                  You do not have an active session plan. View the current call and monthly plans to start.
                 </p>
                 <button style={styles.primaryBtn} onClick={() => setShowPricing(true)}>
-                  Unlock TechPrep Pro Now (from ₹199) →
+                  View Plans →
                 </button>
               </div>
             )}
+          </section>
+          {isAdmin && <AdminPlans />}
+          <section style={styles.card}>
+            <div style={styles.cardHeader}>
+              <h2 style={styles.cardTitle}>AI Token Usage</h2>
+            </div>
+            {tokenUsage ? (
+              <div style={styles.detailBox}>
+                <div style={styles.detailItem}>
+                  <span style={styles.detailLabel}>Tokens burned</span>
+                  <strong style={styles.detailValue}>{tokenUsage.total_tokens.toLocaleString()}</strong>
+                </div>
+                <div style={styles.detailItem}>
+                  <span style={styles.detailLabel}>Input / Output</span>
+                  <strong style={styles.detailValue}>
+                    {tokenUsage.prompt_tokens.toLocaleString()} / {tokenUsage.completion_tokens.toLocaleString()}
+                  </strong>
+                </div>
+                <div style={styles.detailItem}>
+                  <span style={styles.detailLabel}>Tokens remaining</span>
+                  <strong style={styles.detailValue}>No token cap — limited by call-hours</strong>
+                </div>
+                <p style={{ color: "#94a3b8", fontSize: 12, margin: 0 }}>
+                  Recorded AI tokens since tracking began. Audio transcription is not token-billed.
+                  Only provider-reported token usage is counted.
+                </p>
+              </div>
+            ) : <p style={{ color: "#fca5a5" }} role="alert">Token usage unavailable. Refresh to try again.</p>}
           </section>
 
           {/* Desktop App Download Card */}
@@ -136,6 +178,7 @@ export default function WebDashboard({
       {showPricing && (
         <SubscriptionPricing
           currentSubscription={subscription}
+          allowQrUpload={isAdmin}
           onClose={() => setShowPricing(false)}
           onPaymentSuccess={() => {
             setShowPricing(false);

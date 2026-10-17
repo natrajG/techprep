@@ -17,11 +17,15 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
   const [successMessage, setSuccessMessage] = useState("");
   const [uploadingQr, setUploadingQr] = useState(false);
   const fileInputRef = useRef(null);
+  const orderRequestRef = useRef(0);
+  const hourly = plans.find((plan) => plan.id === "hourly_call");
+  const monthly = plans.find((plan) => plan.id === "monthly");
 
   useEffect(() => {
     fetchPlans(API)
       .then((data) => {
         setPlans(data.plans || []);
+        handleSelectPlan("hourly_call");
         if (data.custom_qr_available && data.custom_qr_url) {
           setCustomQrUrl(`${API}${data.custom_qr_url}?t=${Date.now()}`);
         }
@@ -45,26 +49,20 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
   }
 
   async function handleSelectPlan(planId) {
+    const requestId = ++orderRequestRef.current;
     setSelectedPlan(planId);
     setLoading(true);
     setError("");
     setOrder(null);
     try {
       const orderData = await createPaymentOrder(API, planId);
-      setOrder(orderData);
+      if (requestId === orderRequestRef.current) setOrder(orderData);
     } catch (e) {
-      setError(e.message);
+      if (requestId === orderRequestRef.current) setError(e.message);
     } finally {
-      setLoading(false);
+      if (requestId === orderRequestRef.current) setLoading(false);
     }
   }
-
-  // Auto initialize order on mount
-  useEffect(() => {
-    if (!order && !loading) {
-      handleSelectPlan("hourly_call");
-    }
-  }, []);
 
   async function handleVerify(e) {
     e.preventDefault();
@@ -101,12 +99,15 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
             Industry-leading stealth interview intelligence at a fraction of US competitor prices.
           </p>
         </div>
+        {error && <div style={styles.errorText} role="alert">{error}</div>}
 
         {currentSubscription?.status === "active" && (
           <div style={styles.activeBanner}>
             ✓ You have an active subscription: <strong>{currentSubscription.plan_name}</strong>
             {currentSubscription.time_remaining_seconds && (
-              <span> ({Math.ceil(currentSubscription.time_remaining_seconds / 60)} mins remaining)</span>
+              <span> ({currentSubscription.plan_id === "monthly"
+                ? `${Math.ceil(currentSubscription.time_remaining_seconds / 86400)} days`
+                : `${Math.ceil(currentSubscription.time_remaining_seconds / 60)} mins`} remaining)</span>
             )}
           </div>
         )}
@@ -114,7 +115,7 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
         {/* Plan Cards */}
         <div style={styles.plansGrid}>
           {/* Hourly Card */}
-          <div
+          {hourly && <div
             onClick={() => handleSelectPlan("hourly_call")}
             style={{
               ...styles.planCard,
@@ -122,22 +123,22 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
             }}
           >
             <div style={styles.planBadge}>POPULAR FOR INTERVIEWS</div>
-            <h3 style={styles.planName}>Single Call / 1-Hour</h3>
+            <h3 style={styles.planName}>{hourly.name}</h3>
             <div style={styles.priceRow}>
               <span style={styles.currency}>₹</span>
-              <span style={styles.amount}>199</span>
+              <span style={styles.amount}>{hourly.amount.toLocaleString()}</span>
               <span style={styles.term}>/ call</span>
             </div>
             <ul style={styles.featureList}>
-              <li>✓ <strong>1 Hour continuous assistance</strong></li>
-              <li>✓ Reconnect protection (same 1-hr window)</li>
+              <li>✓ <strong>{hourly.duration_minutes} minutes continuous assistance</strong></li>
+              <li>✓ Reconnect protection (same call window)</li>
               <li>✓ Real-time loopback audio transcription</li>
               <li>✓ Stealth capture-protection HUD</li>
             </ul>
-          </div>
+          </div>}
 
           {/* Monthly Card */}
-          <div
+          {monthly && <div
             onClick={() => handleSelectPlan("monthly")}
             style={{
               ...styles.planCard,
@@ -147,19 +148,19 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
             <div style={{ ...styles.planBadge, background: "rgba(234, 179, 8, 0.2)", color: "#facc15" }}>
               BEST VALUE FOR JOB SEARCH
             </div>
-            <h3 style={styles.planName}>Monthly Unlimited</h3>
+            <h3 style={styles.planName}>{monthly.name}</h3>
             <div style={styles.priceRow}>
               <span style={styles.currency}>₹</span>
-              <span style={styles.amount}>1,999</span>
+              <span style={styles.amount}>{monthly.amount.toLocaleString()}</span>
               <span style={styles.term}>/ month</span>
             </div>
             <ul style={styles.featureList}>
-              <li>✓ <strong>Full 30 Days unlimited access</strong></li>
-              <li>✓ Unlimited mock interviews & live prep</li>
+              <li>✓ <strong>{monthly.call_limit} one-hour calls within {monthly.duration_days} days</strong></li>
+              <li>✓ Mock interviews & live prep during each call</li>
               <li>✓ Resume & Job Description matching</li>
               <li>✓ Priority low-latency streaming AI</li>
             </ul>
-          </div>
+          </div>}
         </div>
 
         {/* Payment QR Section */}
@@ -238,7 +239,6 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
               </form>
 
               {successMessage && <div style={styles.successText}>{successMessage}</div>}
-              {error && <div style={styles.errorText}>{error}</div>}
             </div>
           </div>
         ) : null}

@@ -1,11 +1,16 @@
 import { useState } from "react";
 import DesktopDownload from "./DesktopDownload";
 import CaptureProtectionSettings from "./CaptureProtectionSettings";
+import AdminPlans from "./AdminPlans";
 import { splitBold } from "./rich-text.mjs";
 
 export default function UserProfileModal({
   user,
+  isAdmin,
   subscription,
+  tokenUsage,
+  profileLoading,
+  profileError,
   onClose,
   onOpenPricing,
   onSignOut,
@@ -24,13 +29,17 @@ export default function UserProfileModal({
   capturePending,
   captureError,
   requestCaptureProtection,
+  audioMode,
+  setAudioMode,
+  listening,
 }) {
   const [activeTab, setActiveTab] = useState("subscription"); // 'subscription' | 'profile' | 'settings' | 'download'
 
   const hasActiveSub = subscription && subscription.status === "active";
   const timeLeftMinutes = subscription?.time_remaining_seconds
-    ? Math.ceil(subscription.time_remaining_seconds / 60)
-    : null;
+    ? Math.ceil(subscription.time_remaining_seconds / 60) : null;
+  const callMinutesLeft = subscription?.call_time_remaining_seconds
+    ? Math.ceil(subscription.call_time_remaining_seconds / 60) : 0;
 
   return (
     <div style={styles.overlay}>
@@ -60,7 +69,7 @@ export default function UserProfileModal({
             style={{ ...styles.tab, ...(activeTab === "subscription" ? styles.tabActive : {}) }}
             onClick={() => setActiveTab("subscription")}
           >
-            💳 Plan &amp; Credits
+            💳 Plan &amp; Usage
           </button>
           <button
             style={{ ...styles.tab, ...(activeTab === "profile" ? styles.tabActive : {}) }}
@@ -104,14 +113,25 @@ export default function UserProfileModal({
 
                     <div style={styles.usageBox}>
                       <div style={styles.usageItem}>
-                        <span style={styles.usageLabel}>Session Validity</span>
+                        <span style={styles.usageLabel}>Plan Validity</span>
                         <strong style={styles.usageVal}>
-                          {timeLeftMinutes !== null ? `${timeLeftMinutes} mins remaining` : "Active (1-Hr window starts on call)"}
+                          {subscription.plan_id === "monthly"
+                            ? `${Math.ceil(subscription.time_remaining_seconds / 86400)} days remaining`
+                            : timeLeftMinutes !== null ? `${timeLeftMinutes} mins remaining` : "Starts on first use"}
                         </strong>
                       </div>
                       <div style={styles.usageItem}>
-                        <span style={styles.usageLabel}>Transcription &amp; AI</span>
-                        <strong style={styles.usageVal}>✓ Unlimited High-Speed Stream</strong>
+                        <span style={styles.usageLabel}>Call windows</span>
+                        <strong style={styles.usageVal}>
+                          {subscription.calls_total === null ? "Unlimited (existing plan)"
+                            : `${subscription.calls_remaining} of ${subscription.calls_total} remaining`}
+                        </strong>
+                        <span style={styles.usageLabel}>
+                          {callMinutesLeft ? `${callMinutesLeft} mins left in current call`
+                            : subscription.calls_remaining === null || subscription.calls_remaining
+                              ? `A ${subscription.call_duration_minutes}-minute call starts on first AI or audio use`
+                              : "All call-hours used; renew to continue"}
+                        </span>
                       </div>
                       <div style={styles.usageItem}>
                         <span style={styles.usageLabel}>Capture Protection</span>
@@ -125,13 +145,40 @@ export default function UserProfileModal({
                       ⚠️ No Active Subscription Found
                     </div>
                     <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px", lineHeight: 1.5 }}>
-                      Unlock real-time stealth AI answers and live audio transcription. Select either the ₹199 per call or ₹1,999 monthly package.
+                      Unlock real-time stealth AI answers and live audio transcription. Choose a call or monthly plan.
                     </p>
                     <button style={styles.subscribeBtn} onClick={onOpenPricing}>
-                      Unlock TechPrep Pro Now (from ₹199) →
+                      View Plans →
                     </button>
                   </div>
                 )}
+              </div>
+              {isAdmin && <AdminPlans />}
+              <div style={styles.cardSection}>
+                <h4 style={styles.sectionTitle}>AI Token Usage</h4>
+                {profileError ? <p style={styles.hintText} role="alert">{profileError}</p>
+                  : profileLoading || !tokenUsage ? <p style={styles.hintText}>Loading usage…</p>
+                    : <>
+                      <div style={styles.usageBox}>
+                        <div style={styles.usageItem}>
+                          <span style={styles.usageLabel}>Tokens burned</span>
+                          <strong style={styles.usageVal}>{tokenUsage.total_tokens.toLocaleString()}</strong>
+                        </div>
+                        <div style={styles.usageItem}>
+                          <span style={styles.usageLabel}>Input / Output</span>
+                          <strong style={styles.usageVal}>
+                            {tokenUsage.prompt_tokens.toLocaleString()} / {tokenUsage.completion_tokens.toLocaleString()}
+                          </strong>
+                        </div>
+                        <div style={styles.usageItem}>
+                          <span style={styles.usageLabel}>Tokens remaining</span>
+                          <strong style={styles.usageVal}>No token cap — limited by call-hours</strong>
+                        </div>
+                      </div>
+                      <p style={{ ...styles.hintText, margin: "10px 0 0" }}>
+                        Recorded AI tokens since tracking began. Audio transcription is not token-billed; providers must return token usage for it to appear here.
+                      </p>
+                    </>}
               </div>
             </div>
           )}
@@ -173,6 +220,16 @@ export default function UserProfileModal({
             <div style={styles.tabContent}>
               <div style={styles.cardSection}>
                 <h4 style={styles.sectionTitle}>HUD Visibility &amp; OS Stealth</h4>
+                {desktop?.platform === "win32" && (
+                  <label style={styles.settingRow}>
+                    <span>Audio source (change while stopped)</span>
+                    <select value={audioMode} disabled={listening} onChange={(e) => setAudioMode(e.target.value)}>
+                      <option value="both">System + microphone</option>
+                      <option value="system">System audio</option>
+                      <option value="microphone">Microphone only (avoids screen capture)</option>
+                    </select>
+                  </label>
+                )}
                 <label style={styles.settingRow}>
                   <span>👁️ HUD Glass Opacity</span>
                   <input

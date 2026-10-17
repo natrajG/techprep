@@ -25,10 +25,11 @@ test("failed login shows the server message and stores nothing", async () => {
 test("session check: no token, valid token, rejected token is cleared, network error is thrown", async () => {
   const { checkSession, getToken } = await auth;
   const saved = storage();
-  assert.equal(await checkSession("", reply(200), saved), false);
+  assert.deepEqual(await checkSession("", reply(200), saved), { ok: false, user: null });
   saved.setItem("authToken", "t");
-  assert.equal(await checkSession("", reply(200), saved), true);
-  assert.equal(await checkSession("", reply(401), saved), false);
+  assert.deepEqual(await checkSession("", reply(200, { user: "admin", is_admin: true }), saved),
+    { ok: true, user: "admin", isAdmin: true });
+  assert.deepEqual(await checkSession("", reply(401), saved), { ok: false, user: null });
   assert.equal(getToken(saved), "");
   saved.setItem("authToken", "t");
   await assert.rejects(checkSession("", async () => { throw new Error("offline"); }, saved), /offline/);

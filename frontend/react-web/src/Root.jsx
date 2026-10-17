@@ -17,7 +17,9 @@ const renewRequested = searchParams.has("renew");
 export default function Root() {
   const [session, setSession] = useState("checking"); // checking | signedOut | signedIn | unreachable
   const [currentUser, setCurrentUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [subscription, setSubscription] = useState(null);
+  const [tokenUsage, setTokenUsage] = useState(null);
   const [reload, setReload] = useState(0);
   const [authView, setAuthView] = useState(null); // null | 'signin' | 'signup'
   const [config, setConfig] = useState(null);
@@ -32,9 +34,11 @@ export default function Root() {
         setConfig(loaded);
         if (sessionResult.ok) {
           setCurrentUser(sessionResult.user);
+          setIsAdmin(sessionResult.isAdmin);
           try {
             const subData = await fetchSubscriptionStatus(API);
             if (!active) return;
+            setTokenUsage(subData.token_usage);
             if (subData.has_active && subData.subscription) {
               setSubscription(subData.subscription);
             } else {
@@ -47,11 +51,14 @@ export default function Root() {
           } catch {
             if (!active) return;
             setSubscription(null);
+            setTokenUsage(null);
           }
           setSession("signedIn");
         } else {
           setCurrentUser(null);
+          setIsAdmin(false);
           setSubscription(null);
+          setTokenUsage(null);
           setSession("signedOut");
         }
       })
@@ -74,12 +81,14 @@ export default function Root() {
 
   async function signIn(username, password) {
     await login(API, username, password);
-    setSession("signedIn");
+    setAuthView(null);
+    setReload((value) => value + 1);
   }
 
   async function signUp(username, password) {
     await signup(API, username, password);
-    setSession("signedIn");
+    setAuthView(null);
+    setReload((value) => value + 1);
   }
 
   function signOut() {
@@ -87,7 +96,9 @@ export default function Root() {
     setAuthView(null);
     setShowRenewModal(false);
     setCurrentUser(null);
+    setIsAdmin(false);
     setSubscription(null);
+    setTokenUsage(null);
     if (desktop) desktop.signOut();
     else setSession("signedOut");
   }
@@ -160,7 +171,9 @@ export default function Root() {
         )}
         <WebDashboard
           user={currentUser}
+          isAdmin={isAdmin}
           subscription={subscription}
+          tokenUsage={tokenUsage}
           onSignOut={signOut}
           storeUrl={config.store_url}
           localNetwork={config.local_network}
@@ -186,6 +199,7 @@ export default function Root() {
       <App
         onSignOut={signOut}
         currentUser={currentUser}
+        isAdmin={isAdmin}
         initialSubscription={subscription}
         localNetwork={config.local_network}
         storeUrl={config.store_url}

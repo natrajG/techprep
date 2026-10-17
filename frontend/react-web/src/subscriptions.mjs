@@ -6,6 +6,19 @@ export async function fetchPlans(api, fetchImpl = fetch) {
   return res.json();
 }
 
+export async function updatePlan(api, planId, changes, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+  const res = await authFetch(
+    `${api}/api/v1/subscription/plans/${planId}`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) },
+    fetchImpl, storage, onExpired
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(typeof body.detail === "string" ? body.detail : `Plan update failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function fetchSubscriptionStatus(api, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
   const res = await authFetch(`${api}/api/v1/subscription/status`, {}, fetchImpl, storage, onExpired);
   if (!res.ok) throw new Error(`Failed to get subscription status (${res.status})`);
@@ -69,4 +82,3 @@ export async function uploadCustomQr(api, file, fetchImpl = fetch, storage = loc
   }
   return res.json();
 }
-

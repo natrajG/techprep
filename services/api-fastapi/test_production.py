@@ -211,7 +211,7 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def test_answer_passes_only_bounded_recent_turns_to_chat(self):
         calls = []
 
-        async def fake_stream(system, question, history):
+        async def fake_stream(system, question, history, on_usage=None):
             calls.append((system, question, history))
             yield "```python\nprint('ok')\n```"
 
@@ -243,7 +243,7 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
 
 class ProviderErrorTests(ProductionEndpointTests):
     async def test_provider_errors_are_not_shown_to_users_in_production(self):
-        async def failing(*_args):
+        async def failing(*_args, **_kwargs):
             raise RuntimeError("provider secret detail sk-test")
             yield ""
 

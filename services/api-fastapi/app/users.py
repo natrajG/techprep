@@ -67,3 +67,38 @@ def verify_user(username: str, password: str) -> str | None:
     stored_name, salt, expected = row or (None, b"\0" * 16, b"\0" * 64)
     ok = hmac.compare_digest(_hash(password, salt), expected)
     return stored_name if row and ok else None
+
+
+def _ensure_token_usage(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS token_usage (
+            username TEXT PRIMARY KEY COLLATE NOCASE,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
+
+
+def record_token_usage(username: str, prompt_tokens: int, completion_tokens: int) -> None:
+    if prompt_tokens < 0 or completion_tokens < 0:
+        raise ValueError("Token counts must not be negative")
+    with connect() as conn:
+        _ensure_token_usage(conn)
+        conn.execute(
+            """INSERT INTO token_usage (username, prompt_tokens, completion_tokens)
+               VALUES (?, ?, ?)
+               ON CONFLICT(username) DO UPDATE SET
+                 prompt_tokens = prompt_tokens + excluded.prompt_tokens,
+                 completion_tokens = completion_tokens + excluded.completion_tokens""",
+            (username, prompt_tokens, completion_tokens),
+        )
+
+
+def get_token_usage(username: str) -> dict[str, int]:
+    with connect() as conn:
+        _ensure_token_usage(conn)
+        row = conn.execute(
+            "SELECT prompt_tokens, completion_tokens FROM token_usage WHERE username = ?", (username,)
+        ).fetchone()
+    prompt, completion = row or (0, 0)
+    return {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}
