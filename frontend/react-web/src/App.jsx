@@ -154,7 +154,17 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         });
       } else {
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            audio: true,
+            video: true,
+          });
+        } catch (displayErr) {
+          // If display media fails or has invalid constraints, fall back to default user media audio
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+        }
       }
       const tracks = stream.getAudioTracks();
       if (!tracks.length) {
