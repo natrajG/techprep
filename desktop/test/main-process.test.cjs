@@ -28,6 +28,8 @@ async function boot({
   app.isPackaged = isPackaged;
   app.commandLine = { appendSwitch() {} };
   app.quit = () => { app.didQuit = true; };
+  app.getPath = () => fs.mkdtempSync(path.join(require("node:os").tmpdir(), "techprep-test-"));
+  app.getVersion = () => "0.0.0-test";
   const errors = [];
   const healthRequests = [];
   const permissions = {};
@@ -52,6 +54,7 @@ async function boot({
     app, BrowserWindow: Window,
     ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
     session: { defaultSession: {
+      clearCache: async () => {},
       setPermissionRequestHandler(handler) { permissions.request = handler; },
       setDisplayMediaRequestHandler(handler) { permissions.display = handler; },
     } },
@@ -74,7 +77,7 @@ async function boot({
       if (name === "child_process") return { spawn: assert.fail, execFileSync: assert.fail };
       return mainRequire(name);
     },
-    process: { platform, env, versions: { electron: "44.7.1" } },
+    process: { platform, env, versions: { electron: "44.7.1" }, on() {} },
     __dirname: path.dirname(mainPath), console, setTimeout, URL, AbortSignal,
   });
   await new Promise(setImmediate);

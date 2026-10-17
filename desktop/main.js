@@ -7,6 +7,11 @@ const os = require("os");
 const { createCaptureProtection } = require("./capture-protection");
 const { createOverlayWindow } = require("./overlay-window");
 const { resolveAppUrl } = require("./server-url");
+const { createLogger } = require("./logger");
+
+const logger = createLogger(app.getPath("userData"));
+process.on("uncaughtException", (error) => logger.error("uncaughtException:", error));
+process.on("unhandledRejection", (reason) => logger.error("unhandledRejection:", reason));
 
 if (process.platform === "linux") app.commandLine.appendSwitch("ozone-platform", "x11");
 
@@ -18,7 +23,7 @@ function resolveSystemAudioSource() {
     const sink = execFileSync("pactl", ["get-default-sink"], { encoding: "utf8" }).trim();
     if (sink) process.env.PULSE_SOURCE = `${sink}.monitor`;
   } catch {
-    console.warn("pactl not available; using the default microphone for audio capture.");
+    logger.warn("pactl not available; using the default microphone for audio capture.");
   }
 }
 resolveSystemAudioSource();
@@ -83,7 +88,7 @@ function createWindow() {
     preload: path.join(__dirname, "preload.js"),
     url: APP_URL,
     onLoadError: (error) => {
-      console.error("Cannot load overlay:", error);
+      logger.error("Cannot load overlay:", error);
       dialog.showErrorBox("Cannot load TechPrep", `Check ${APP_URL} and its certificate trust, then relaunch.\n${error.message}`);
       app.quit();
     },
@@ -94,6 +99,16 @@ function createWindow() {
   if (process.platform === "darwin" && app.dock) app.dock.hide();
   created.on("closed", () => {
     if (win === created) { win = null; overlay = null; }
+  });
+  // Surface renderer-side errors/crashes into the persistent log file for support/debugging.
+  created.webContents.on("console-message", (event, level, message, line, sourceId) => {
+    if (level >= 2) logger.warn(`renderer console: ${message} (${sourceId}:${line})`);
+  });
+  created.webContents.on("render-process-gone", (event, details) => {
+    logger.error("Overlay renderer crashed:", details.reason);
+  });
+  created.webContents.on("did-fail-load", (event, code, description, url) => {
+    logger.error(`Overlay failed to load ${url}: [${code}] ${description}`);
   });
 }
 
@@ -120,6 +135,14 @@ function openLogin() {
 
 app.whenReady().then(async () => {
   const ses = session.defaultSession;
+  logger.info(`App starting. version=${app.getVersion()} platform=${process.platform} appUrl=${APP_URL}`);
+  // The web UI is fetched live from the server on every launch; force-bypass any HTTP cache so
+  // fixes deployed to the server always show up immediately, without reinstalling the desktop app.
+  try {
+    await ses.clearCache();
+  } catch (error) {
+    logger.warn("Could not clear session cache:", error);
+  }
   ses.setPermissionRequestHandler((wc, permission, cb, details) => {
     cb(!!win && !win.isDestroyed() && wc === win.webContents &&
       details.isMainFrame && details.requestingUrl.startsWith(`${APP_ORIGIN}/`) &&
@@ -140,7 +163,7 @@ app.whenReady().then(async () => {
         audio: ["win32", "darwin"].includes(process.platform) ? "loopback" : undefined,
       });
     } catch (error) {
-      console.error("Cannot start system-audio capture:", error);
+      logger.error("Cannot start system-audio capture:", error);
       cb({});
     }
   });

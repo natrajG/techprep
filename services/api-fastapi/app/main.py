@@ -178,5 +178,25 @@ async def evaluate(req: EvaluateRequest) -> dict:
 
 # Serve the built React UI (frontend/react-web/dist) from the same origin, used by the desktop app.
 _DIST = Path(__file__).resolve().parents[3] / "frontend" / "react-web" / "dist"
+
+
+class _SPAStaticFiles(StaticFiles):
+    """StaticFiles that never lets the SPA shell (index.html) be cached, while letting
+    content-hashed /assets/* files (produced by the Vite build) cache indefinitely.
+
+    This guarantees the Electron desktop app (which loads the same fixed URL on every
+    launch) always sees newly deployed web-layer fixes without needing a reinstall.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        path = str(args[0]) if args else ""
+        if path.endswith(".html") or path == "":
+            response.headers["Cache-Control"] = "no-store"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 if _DIST.is_dir():
-    app.mount("/", StaticFiles(directory=_DIST, html=True), name="web")
+    app.mount("/", _SPAStaticFiles(directory=_DIST, html=True), name="web")

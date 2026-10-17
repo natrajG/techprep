@@ -157,11 +157,13 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
-            // Only audio is needed; the smallest possible video track still satisfies Chromium's
-            // requirement to pair a video track with Windows/macOS system-audio loopback, and
-            // keeping it tiny/low-rate/cursor-free avoids the brief cursor flicker a full-screen
-            // capture can cause. It is stopped immediately below once the audio track is secured.
-            video: { frameRate: 1, width: 2, height: 2, cursor: "never" },
+            // Only audio is actually used; Chromium still requires a video track to be requested to
+            // satisfy Windows/macOS system-audio loopback. Keep this unconstrained (plain `true`) —
+            // tight numeric constraints (fixed width/height/cursor) can be rejected by the desktop
+            // capture source and throw "Invalid capture constraints" again. The video track is
+            // stopped immediately below once the audio track is secured, which is what actually
+            // reduces the OS capture overhead/cursor flicker, without risking capture failure.
+            video: true,
           });
         } catch (displayErr) {
           // If display media fails or has invalid constraints, fall back to default user media audio
@@ -213,6 +215,9 @@ export default function App({ onSignOut, currentUser = null, initialSubscription
       setListening(true);
       setStatus("Listening…");
     } catch (e) {
+      // Logged via console.error so it lands in the desktop app's persistent log file
+      // (desktop/main.js forwards renderer console output there) for support/debugging.
+      console.error("startListening failed:", e);
       stopListening();
       setStatus("Capture failed: " + e.message);
     }
