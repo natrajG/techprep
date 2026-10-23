@@ -7,20 +7,26 @@ export default function InteractiveDemo({ onClose, onGoToPricing }) {
     {
       title: "1. Stealth Floating Overlay",
       badge: "Zero Desktop Clutter",
-      desc: "TechPrep floats discreetly above your video call (Zoom, Teams, Google Meet, or browser tab) with customizable luxury glassmorphism transparency and always-on-top positioning.",
-      highlight: "Excludes itself from screen shares & recordings automatically on Windows & macOS.",
+      desc: "TechPrep floats above your video call (Zoom, Teams, Google Meet, or browser tab) with a glass-style card and always-on-top positioning.",
+      highlight: "The desktop app asks Windows and macOS to leave its window out of screen capture. This is best effort and depends on the sharing tool, so check your own sharing preview.",
     },
     {
-      title: "2. Real-Time Audio Capture",
+      title: "2. System Audio Capture",
       badge: "Direct Loopback",
-      desc: "Captures the interviewer's voice directly from your system audio loopback without annoying microphone feedback or echoes. High-speed speech-to-text models transcribe questions instantly.",
-      highlight: "Silent pauses are intelligently filtered locally to eliminate latency and save bandwidth.",
+      desc: "Press Listen to capture the sound playing through your computer, such as the other person's voice on a Teams or Meet call. Only system audio is recorded, never your microphone, and speech is transcribed as it arrives.",
+      highlight: "Silent stretches are detected locally, so quiet audio isn't sent for transcription.",
     },
     {
-      title: "3. Hyper-Tailored Answers",
-      badge: "Context-Aware AI",
-      desc: "The assistant matches your loaded Resume and Job Description against the interviewer's questions, delivering concise, professional talking points and code blocks in real time.",
-      highlight: "Streamed token-by-token directly to your HUD so you're never left waiting.",
+      title: "3. Automatic Answers",
+      badge: "Hands-Free",
+      desc: "When the speaker pauses for about two seconds, TechPrep answers automatically, with no need to press Answer. Your loaded Resume and Job Description keep the talking points relevant to you.",
+      highlight: "Answers stream in token by token, and Answer or a typed question is still there when you want manual control.",
+    },
+    {
+      title: "4. Easy to Read",
+      badge: "Clear Layout",
+      desc: "The control bar stays pinned while only the answer card scrolls, and it follows the answer as it streams. Background opacity is adjustable but never so low that the text becomes unreadable.",
+      highlight: "Scroll up to re-read an earlier part, and the view stops following until the next answer.",
     },
   ];
 
@@ -31,7 +37,7 @@ export default function InteractiveDemo({ onClose, onGoToPricing }) {
           <div style={styles.badge}>INTERACTIVE WALKTHROUGH</div>
           <h2 style={styles.title}>Experience TechPrep Luxury HUD</h2>
           <p style={styles.subtitle}>
-            See how candidates secure top engineering & management offers with undetectable real-time AI assistance.
+            See how TechPrep listens to your call's audio and drafts answers in real time. Use it where AI assistance is allowed, such as practice and mock interviews.
           </p>
         </div>
 
@@ -79,7 +85,7 @@ export default function InteractiveDemo({ onClose, onGoToPricing }) {
               <div style={styles.simulatedBar}>
                 <span style={styles.hudLiveDot}></span>
                 <strong style={{ fontSize: 12, color: "#fff" }}>TECHPREP HUD</strong>
-                <span style={styles.hudBadge}>Protected Capture</span>
+                <span style={styles.hudBadge}>Listening · auto-answer</span>
               </div>
               <div style={styles.simulatedBody}>
                 <div style={styles.hudPrompt}>
@@ -102,7 +108,7 @@ export default function InteractiveDemo({ onClose, onGoToPricing }) {
             <h3 style={styles.infoTitle}>{steps[activeStep].title}</h3>
             <p style={styles.infoDesc}>{steps[activeStep].desc}</p>
             <div style={styles.infoHighlight}>
-              🛡️ <strong>Stealth Feature:</strong> {steps[activeStep].highlight}
+              ✨ <strong>Good to know:</strong> {steps[activeStep].highlight}
             </div>
           </div>
         </div>
