@@ -3,34 +3,65 @@ import { useState } from "react";
 export default function Login({
   onSubmit,
   onSignUp,
+  onForgot,
+  onReset,
+  onResetDone,
+  resetToken,
   initialMode = "signin",
   onBack,
+  wrongPasswordHint,
   minimumPassword = 8,
   isModal = false,
 }) {
-  const [creating, setCreating] = useState(initialMode === "signup");
+  const [mode, setMode] = useState(resetToken ? "reset" : initialMode); // signin | signup | forgot | reset
   const [confirm, setConfirm] = useState("");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const creating = mode === "signup";
+  const needsConfirm = creating || mode === "reset";
+
+  function switchMode(next) {
+    setMode(next);
+    setError("");
+    setNotice("");
+    setPassword("");
+    setConfirm("");
+  }
 
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (creating) {
-        if (password !== confirm) throw new Error("Passwords do not match.");
-        await onSignUp(username, password);
+      if (needsConfirm && password !== confirm) throw new Error("Passwords do not match.");
+      if (mode === "signup") {
+        await onSignUp(username, password, email);
+      } else if (mode === "forgot") {
+        setNotice(await onForgot(email));
+        setBusy(false);
+      } else if (mode === "reset") {
+        setNotice(await onReset(resetToken, password));
+        setMode("done");
+        setBusy(false);
       } else {
         await onSubmit(username, password);
       }
     } catch (e) {
-      setError(e.message);
+      setError(mode === "signin" && e.status === 401 && wrongPasswordHint ? `${e.message}. ${wrongPasswordHint}` : e.message);
       setBusy(false);
     }
   }
+
+  const heading = {
+    signup: "Create an account to begin.",
+    forgot: "Enter your account email and we will send a reset link.",
+    reset: "Choose a new password.",
+    done: "",
+  }[mode] ?? "Sign in to open the assistant.";
 
   return (
     <div style={isModal ? styles.modalOverlay : styles.page} onClick={isModal ? onBack : undefined}>
@@ -44,33 +75,67 @@ export default function Login({
           <span style={styles.logoDot}></span>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>TechPrep</h2>
         </div>
-        <p style={{ margin: "4px 0 16px", color: "#94a3b8", fontSize: 13.5 }}>
-          {creating ? "Create an account to begin." : "Sign in to open the assistant."}
-        </p>
+        <p style={{ margin: "4px 0 16px", color: "#94a3b8", fontSize: 13.5 }}>{heading}</p>
 
-        <label style={styles.label}>Username
-          <input style={styles.input} value={username} autoComplete="username" autoFocus required
-            onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label style={styles.label}>Password
-          <input style={styles.input} type="password" value={password} autoComplete={creating ? "new-password" : "current-password"} required minLength={creating ? minimumPassword : undefined}
-            onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        {creating && (
-          <label style={styles.label}>Confirm password
-            <input style={styles.input} type="password" value={confirm} autoComplete="new-password" required
-              onChange={(e) => setConfirm(e.target.value)} />
-          </label>
-        )}
-        {error && <p role="alert" style={{ color: "#f87171", margin: "0 0 10px", fontSize: 13 }}>{error}</p>}
-        <button type="submit" style={styles.button} disabled={busy}>
-          {busy ? "Please wait…" : creating ? "Create account" : "Sign in"}
-        </button>
-        {onSignUp && (
-          <button type="button" style={styles.link} disabled={busy}
-            onClick={() => { setCreating(!creating); setError(""); }}>
-            {creating ? "Already have an account? Sign in" : "No account? Sign up"}
-          </button>
+        {mode === "done" ? (
+          <>
+            <p role="status" style={{ color: "#86efac", margin: "0 0 14px", fontSize: 14 }}>{notice}</p>
+            <button type="button" style={styles.button} onClick={() => { onResetDone?.(); switchMode("signin"); }}>
+              Go to sign in
+            </button>
+          </>
+        ) : (
+          <>
+            {(mode === "signin" || mode === "signup") && (
+              <label style={styles.label}>Username
+                <input style={styles.input} value={username} autoComplete="username" autoFocus required
+                  onChange={(e) => setUsername(e.target.value)} />
+              </label>
+            )}
+            {(creating || mode === "forgot") && (
+              <label style={styles.label}>Email
+                <input style={styles.input} type="email" value={email} autoComplete="email" required maxLength={254}
+                  autoFocus={mode === "forgot"} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+            )}
+            {mode !== "forgot" && (
+              <label style={styles.label}>{mode === "reset" ? "New password" : "Password"}
+                <input style={styles.input} type="password" value={password} autoFocus={mode === "reset"}
+                  autoComplete={needsConfirm ? "new-password" : "current-password"} required
+                  minLength={needsConfirm ? minimumPassword : undefined}
+                  onChange={(e) => setPassword(e.target.value)} />
+              </label>
+            )}
+            {needsConfirm && (
+              <label style={styles.label}>Confirm password
+                <input style={styles.input} type="password" value={confirm} autoComplete="new-password" required
+                  onChange={(e) => setConfirm(e.target.value)} />
+              </label>
+            )}
+            {error && <p role="alert" style={{ color: "#f87171", margin: "0 0 10px", fontSize: 13 }}>{error}</p>}
+            {notice && <p role="status" style={{ color: "#86efac", margin: "0 0 10px", fontSize: 13 }}>{notice}</p>}
+            <button type="submit" style={styles.button} disabled={busy}>
+              {busy ? "Please wait…" : {
+                signup: "Create account", forgot: "Send reset link", reset: "Set new password",
+              }[mode] ?? "Sign in"}
+            </button>
+            {mode === "signin" && onForgot && (
+              <button type="button" style={styles.link} disabled={busy} onClick={() => switchMode("forgot")}>
+                Forgot password?
+              </button>
+            )}
+            {mode === "forgot" && (
+              <button type="button" style={styles.link} disabled={busy} onClick={() => switchMode("signin")}>
+                ← Back to sign in
+              </button>
+            )}
+            {onSignUp && (mode === "signin" || mode === "signup") && (
+              <button type="button" style={styles.link} disabled={busy}
+                onClick={() => switchMode(creating ? "signin" : "signup")}>
+                {creating ? "Already have an account? Sign in" : "No account? Sign up"}
+              </button>
+            )}
+          </>
         )}
         {onBack && (
           <button type="button" style={{ ...styles.link, color: "#94a3b8" }} onClick={onBack}>

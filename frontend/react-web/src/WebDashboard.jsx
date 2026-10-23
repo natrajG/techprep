@@ -1,4 +1,5 @@
 import { useState } from "react";
+import RecoveryEmail from "./RecoveryEmail";
 import DesktopDownload from "./DesktopDownload";
 import SubscriptionPricing from "./SubscriptionPricing";
 import AdminPlans from "./AdminPlans";
@@ -9,6 +10,7 @@ export default function WebDashboard({
   subscription,
   tokenUsage,
   onSignOut,
+  passwordResetEnabled,
   storeUrl,
   localNetwork,
   onRefreshSubscription,
@@ -147,6 +149,15 @@ export default function WebDashboard({
               </div>
             ) : <p style={{ color: "#fca5a5" }} role="alert">Token usage unavailable. Refresh to try again.</p>}
           </section>
+
+          {passwordResetEnabled && !isAdmin && (
+            <section style={styles.card}>
+              <div style={styles.cardHeader}>
+                <h2 style={styles.cardTitle}>Account recovery</h2>
+              </div>
+              <RecoveryEmail />
+            </section>
+          )}
 
           {/* Desktop App Download Card */}
           <section style={styles.card}>

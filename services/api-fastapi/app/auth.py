@@ -44,7 +44,7 @@ def parse_token(token: str) -> str | None:
         return None
 
 
-def require_auth(authorization: str = Header(default="")) -> str:
+async def require_auth(authorization: str = Header(default="")) -> str:
     scheme, _, token = authorization.partition(" ")
     user = parse_token(token) if scheme.lower() == "bearer" else None
     if user is None:

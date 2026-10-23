@@ -71,6 +71,10 @@ def validate() -> None:
         ("AUTH_TOKEN_TTL_HOURS", 12),
         ("AUTH_RATE_LIMIT_ATTEMPTS", 10),
         ("AUTH_RATE_LIMIT_WINDOW_SECONDS", 300),
+        ("AUTH_RATE_LIMIT_IP_ATTEMPTS", 500),
         ("AI_REQUESTS_PER_MINUTE", 30),
+        ("SMTP_PORT", 587),
     ):
         positive_integer(name, default)
+    if bool(os.getenv("SMTP_HOST")) != bool(os.getenv("MAIL_FROM")):
+        raise ValueError("Set both SMTP_HOST and MAIL_FROM to enable password reset emails.")

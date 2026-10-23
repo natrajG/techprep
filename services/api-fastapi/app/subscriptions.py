@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,65 +59,69 @@ def is_admin(username: str) -> bool:
     return bool(admin_user and username.lower() == admin_user.lower())
 
 
+def _subscription_schema(conn) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL COLLATE NOCASE,
+            plan_id TEXT NOT NULL,
+            plan_name TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            session_start INTEGER,
+            valid_until INTEGER,
+            transaction_ref TEXT
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_user ON subscriptions (username, status)")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS plan_settings (
+            plan_id TEXT PRIMARY KEY, amount INTEGER NOT NULL,
+            duration_minutes INTEGER, duration_days INTEGER, call_limit INTEGER
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS call_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subscription_id INTEGER NOT NULL,
+            started_at INTEGER NOT NULL
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_call_subscription ON call_sessions (subscription_id, started_at)")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS payment_orders (
+            order_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL COLLATE NOCASE,
+            plan_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            upi_uri TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            verified_at INTEGER,
+            utr_ref TEXT
+        )"""
+    )
+    for table, columns in (
+        ("subscriptions", ("call_limit", "duration_minutes")),
+        ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days",
+                            "provider_order_id", "provider_payment_id")),
+    ):
+        existing = {column[1] for column in conn.execute(f"PRAGMA table_info({table})")}
+        for name in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {'TEXT' if name in ('plan_name', 'provider_order_id', 'provider_payment_id') else 'INTEGER'}")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_payment ON payment_orders (provider_payment_id)"
+    )
+
+
+users.register_schema(_subscription_schema)
+
+
 @contextmanager
 def get_db():
     with users.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL COLLATE NOCASE,
-                plan_id TEXT NOT NULL,
-                plan_name TEXT NOT NULL,
-                amount INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                session_start INTEGER,
-                valid_until INTEGER,
-                transaction_ref TEXT
-            )"""
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_user ON subscriptions (username, status)")
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS plan_settings (
-                plan_id TEXT PRIMARY KEY, amount INTEGER NOT NULL,
-                duration_minutes INTEGER, duration_days INTEGER, call_limit INTEGER
-            )"""
-        )
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS call_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subscription_id INTEGER NOT NULL,
-                started_at INTEGER NOT NULL
-            )"""
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_call_subscription ON call_sessions (subscription_id, started_at)")
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS payment_orders (
-                order_id TEXT PRIMARY KEY,
-                username TEXT NOT NULL COLLATE NOCASE,
-                plan_id TEXT NOT NULL,
-                amount INTEGER NOT NULL,
-                upi_uri TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                verified_at INTEGER,
-                utr_ref TEXT
-            )"""
-        )
-        for table, columns in (
-            ("subscriptions", ("call_limit", "duration_minutes")),
-            ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days",
-                                "provider_order_id", "provider_payment_id")),
-        ):
-            existing = {column[1] for column in conn.execute(f"PRAGMA table_info({table})")}
-            for name in columns:
-                if name not in existing:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {'TEXT' if name in ('plan_name', 'provider_order_id', 'provider_payment_id') else 'INTEGER'}")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_payment ON payment_orders (provider_payment_id)"
-        )
-        conn.commit()
         yield conn
 
 
@@ -189,55 +193,65 @@ def build_upi_uri(vpa: str, payee_name: str, amount: int, order_id: str, note: s
     return f"upi://pay?pa={vpa}&pn={clean_name}&am={amount}&cu=INR&tr={order_id}&tn={clean_note}"
 
 
+def _expire_subscription(sub_id: int, now: int) -> None:
+    with get_db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "UPDATE subscriptions SET status = 'expired' WHERE id = ? AND status = 'active' AND valid_until <= ?",
+            (sub_id, now),
+        )
+
+
 def get_active_subscription(username: str) -> dict[str, Any] | None:
+    """Read-only unless the subscription has just expired."""
     now = int(time.time())
     with get_db() as conn:
-        cursor = conn.execute(
+        row = conn.execute(
             """SELECT id, plan_id, plan_name, amount, status, created_at, session_start, valid_until,
                       call_limit, duration_minutes
                FROM subscriptions
                WHERE username = ? AND status = 'active'
                ORDER BY id DESC LIMIT 1""",
             (username,),
-        )
-        row = cursor.fetchone()
+        ).fetchone()
         if not row:
             return None
 
         sub_id, plan_id, plan_name, amount, status, created_at, session_start, valid_until, call_limit, duration_minutes = row
-
-        # Check if expired
         if valid_until and valid_until <= now:
-            conn.execute("UPDATE subscriptions SET status = 'expired' WHERE id = ?", (sub_id,))
-            return None
-
-        time_remaining = (valid_until - now) if valid_until else None
-        if plan_id == "monthly":
+            row = None
+        elif plan_id == "monthly":
             calls_used, last_start = conn.execute(
                 "SELECT COUNT(*), MAX(started_at) FROM call_sessions WHERE subscription_id = ?", (sub_id,)
             ).fetchone()
-            calls_total = call_limit
-            call_time_remaining = max(0, last_start + CALL_SECONDS - now) if last_start is not None else 0
-        else:
-            calls_used = 1 if session_start else 0
-            calls_total = 1
-            call_time_remaining = max(0, valid_until - now) if valid_until else 0
-        return {
-            "id": sub_id,
-            "plan_id": plan_id,
-            "plan_name": plan_name,
-            "amount": amount,
-            "status": "active",
-            "created_at": created_at,
-            "session_start": session_start,
-            "valid_until": valid_until,
-            "time_remaining_seconds": max(0, time_remaining) if time_remaining else None,
-            "calls_total": calls_total,
-            "calls_used": calls_used,
-            "calls_remaining": max(0, calls_total - calls_used) if calls_total is not None else None,
-            "call_time_remaining_seconds": call_time_remaining,
-            "call_duration_minutes": (duration_minutes or 60) if plan_id == "hourly_call" else 60,
-        }
+    if row is None:
+        _expire_subscription(sub_id, now)
+        return None
+
+    time_remaining = (valid_until - now) if valid_until else None
+    if plan_id == "monthly":
+        calls_total = call_limit
+        call_time_remaining = max(0, last_start + CALL_SECONDS - now) if last_start is not None else 0
+    else:
+        calls_used = 1 if session_start else 0
+        calls_total = 1
+        call_time_remaining = max(0, valid_until - now) if valid_until else 0
+    return {
+        "id": sub_id,
+        "plan_id": plan_id,
+        "plan_name": plan_name,
+        "amount": amount,
+        "status": "active",
+        "created_at": created_at,
+        "session_start": session_start,
+        "valid_until": valid_until,
+        "time_remaining_seconds": max(0, time_remaining) if time_remaining else None,
+        "calls_total": calls_total,
+        "calls_used": calls_used,
+        "calls_remaining": max(0, calls_total - calls_used) if calls_total is not None else None,
+        "call_time_remaining_seconds": call_time_remaining,
+        "call_duration_minutes": (duration_minutes or 60) if plan_id == "hourly_call" else 60,
+    }
 
 
 def activate_call_session_if_needed(username: str) -> None:
@@ -290,9 +304,10 @@ def subscription_enforced() -> bool:
     return val in ("true", "1", "yes")
 
 
-def require_subscription(user: str = Depends(require_auth)) -> str:
+def require_subscription(request: Request, user: str = Depends(require_auth)) -> str:
     """Require an active plan when subscription enforcement is enabled."""
     sub = get_active_subscription(user)
+    request.state.subscription = sub
     if not sub:
         if not subscription_enforced():
             return user
@@ -303,10 +318,21 @@ def require_subscription(user: str = Depends(require_auth)) -> str:
     return user
 
 
-def start_ai_call(user: str) -> None:
-    """Start or reuse a call window for a validated AI or audio request."""
-    sub = get_active_subscription(user)
+def call_window_active(sub: dict[str, Any] | None) -> bool:
+    """True when this request needs no write: there is no plan, or its call window is already open."""
     if not sub:
+        return True
+    if sub["plan_id"] == "hourly_call":
+        return bool(sub["session_start"])
+    if sub["plan_id"] == "monthly":
+        return sub["call_time_remaining_seconds"] > 0
+    return True
+
+
+def start_ai_call(user: str, sub: dict[str, Any] | None = None) -> None:
+    """Start or reuse a call window for a validated AI or audio request."""
+    sub = sub if sub is not None else get_active_subscription(user)
+    if call_window_active(sub):
         return
     if sub["plan_id"] == "hourly_call":
         activate_call_session_if_needed(user)
@@ -314,8 +340,8 @@ def start_ai_call(user: str) -> None:
         activate_monthly_call_if_needed(sub["id"])
 
 
-def require_ai_call(user: str = Depends(require_subscription)) -> str:
-    start_ai_call(user)
+def require_ai_call(request: Request, user: str = Depends(require_subscription)) -> str:
+    start_ai_call(user, request.state.subscription)
     return user
 
 

@@ -4,7 +4,9 @@ import Landing from "./Landing";
 import Login from "./Login";
 import SubscriptionPricing from "./SubscriptionPricing";
 import WebDashboard from "./WebDashboard";
-import { checkSession, clearToken, loadConfig, login, signup } from "./auth.mjs";
+import {
+  checkSession, clearToken, loadConfig, login, readResetToken, requestPasswordReset, resetPassword, signup,
+} from "./auth.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 
 const desktop = window.desktop;
@@ -21,7 +23,8 @@ export default function Root() {
   const [subscription, setSubscription] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
   const [reload, setReload] = useState(0);
-  const [authView, setAuthView] = useState(null); // null | 'signin' | 'signup'
+  const [resetToken, setResetToken] = useState(() => readResetToken(location.hash));
+  const [authView, setAuthView] = useState(resetToken ? "signin" : null); // null | 'signin' | 'signup'
   const [config, setConfig] = useState(null);
   const [showRenewModal, setShowRenewModal] = useState(renewRequested);
 
@@ -85,11 +88,23 @@ export default function Root() {
     setReload((value) => value + 1);
   }
 
-  async function signUp(username, password) {
-    await signup(API, username, password);
+  async function signUp(username, password, email) {
+    await signup(API, username, password, email);
     setAuthView(null);
     setReload((value) => value + 1);
   }
+
+  function finishReset() {
+    history.replaceState(null, "", location.pathname + location.search);
+    setResetToken(null);
+  }
+
+  const passwordReset = config?.password_reset_enabled ? {
+    onForgot: (email) => requestPasswordReset(API, email),
+    onReset: (token, password) => resetPassword(API, token, password),
+    onResetDone: finishReset,
+    resetToken,
+  } : {};
 
   function signOut() {
     clearToken();
@@ -129,6 +144,7 @@ export default function Root() {
               onBack={() => setAuthView(null)}
               minimumPassword={config?.minimum_password || 8}
               isModal={true}
+              {...passwordReset}
             />
           )}
           {showRenewModal && (
@@ -148,6 +164,7 @@ export default function Root() {
         initialMode="signin"
         onSubmit={signIn}
         onSignUp={undefined}
+        wrongPasswordHint="Forgot it? Reset your password on the website."
         minimumPassword={config?.minimum_password || 8}
       />
     );
@@ -176,6 +193,7 @@ export default function Root() {
           tokenUsage={tokenUsage}
           onSignOut={signOut}
           storeUrl={config.store_url}
+          passwordResetEnabled={config.password_reset_enabled}
           localNetwork={config.local_network}
           onRefreshSubscription={() => setReload((n) => n + 1)}
         />

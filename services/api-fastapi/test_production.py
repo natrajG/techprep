@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from fastapi import HTTPException
@@ -118,6 +118,7 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.db = patch.object(users, "DB_PATH", Path(self.directory.name) / "users.db")
         self.db.start()
         self.addCleanup(self.db.stop)
+        rate_limit.reset_memory()
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app, client=("203.0.113.1", 5000)),
             base_url="https://techprep-demo.duckdns.org",
@@ -129,10 +130,11 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def test_public_config_does_not_expose_secrets_and_disables_signup(self):
         response = await self.client.get("/api/v1/config")
         self.assertEqual(response.json(), {
-            "signup_enabled": False, "minimum_password": 12, "local_network": False, "store_url": None,
+            "signup_enabled": False, "minimum_password": 12, "password_reset_enabled": False,
+            "local_network": False, "store_url": None,
         })
         signup = await self.client.post("/api/v1/signup", json={
-            "username": "newuser", "password": "a-valid-password",
+            "username": "newuser", "password": "a-valid-password", "email": "new@example.com",
         })
         self.assertEqual(signup.status_code, 403)
 
@@ -142,13 +144,45 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
             response = await self.client.get("/api/v1/config")
         self.assertEqual(response.json()["store_url"], "https://apps.microsoft.com/detail/9N36X6C5706B")
 
-    async def test_authentication_has_a_durable_rate_limit(self):
-        credentials = {"username": PRODUCTION["APP_USERNAME"], "password": PRODUCTION["APP_PASSWORD"]}
-        response = await self.client.post("/api/v1/login", json=credentials)
-        self.assertEqual(response.status_code, 200)
-        response = await self.client.post("/api/v1/login", json=credentials)
-        self.assertEqual(response.status_code, 429)
-        self.assertIn("retry-after", response.headers)
+    async def login(self, username, password, address="203.0.113.1"):
+        client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, client=(address, 5000)), base_url="https://techprep-demo.duckdns.org",
+        )
+        async with client:
+            return await client.post("/api/v1/login", json={"username": username, "password": password})
+
+    async def test_failed_logins_are_locked_out_durably(self):
+        name = PRODUCTION["APP_USERNAME"]
+        with patch("app.main.asyncio.sleep", new=AsyncMock()):
+            self.assertEqual((await self.login(name, "wrong-password")).status_code, 401)
+            locked = await self.login(name, "wrong-password")
+        self.assertEqual(locked.status_code, 429)
+        self.assertIn("retry-after", locked.headers)
+        self.assertEqual((await self.login(name, PRODUCTION["APP_PASSWORD"])).status_code, 429)
+
+    async def test_successful_logins_never_lock_an_account(self):
+        for _ in range(5):
+            self.assertEqual((await self.login(PRODUCTION["APP_USERNAME"], PRODUCTION["APP_PASSWORD"])).status_code, 200)
+
+    async def test_users_sharing_an_address_do_not_lock_each_other_out(self):
+        with patch("app.main.asyncio.sleep", new=AsyncMock()):
+            await self.login("alice", "wrong-password")
+            self.assertEqual((await self.login("alice", "wrong-password")).status_code, 429)
+            self.assertEqual((await self.login("bob", "wrong-password")).status_code, 401)
+        self.assertEqual((await self.login(PRODUCTION["APP_USERNAME"], PRODUCTION["APP_PASSWORD"])).status_code, 200)
+
+    async def test_the_lockout_is_per_address_so_an_attacker_cannot_lock_out_the_owner(self):
+        name = PRODUCTION["APP_USERNAME"]
+        with patch("app.main.asyncio.sleep", new=AsyncMock()):
+            await self.login(name, "wrong-password", address="198.51.100.9")
+            self.assertEqual((await self.login(name, "wrong-password", address="198.51.100.9")).status_code, 429)
+        self.assertEqual((await self.login(name, PRODUCTION["APP_PASSWORD"])).status_code, 200)
+
+    async def test_one_address_cannot_try_unlimited_accounts(self):
+        with patch.dict(os.environ, {"AUTH_RATE_LIMIT_IP_ATTEMPTS": "3"}), patch("app.main.asyncio.sleep", new=AsyncMock()):
+            for index in range(3):
+                self.assertEqual((await self.login(f"user{index}", "wrong-password")).status_code, 401)
+            self.assertEqual((await self.login("user9", "wrong-password")).status_code, 429)
 
     def publish(self, contents=b"MZ signed installer", **changes):
         releases = Path(self.directory.name) / "releases"
