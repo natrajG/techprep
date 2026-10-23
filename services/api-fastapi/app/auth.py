@@ -7,6 +7,8 @@ import time
 
 from fastapi import Header, HTTPException
 
+from . import users
+
 TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_HOURS", "12")) * 3600
 # Without AUTH_SECRET, tokens are valid only until the backend restarts.
 _SECRET = (os.getenv("AUTH_SECRET") or secrets.token_hex(32)).encode()
@@ -28,25 +30,38 @@ def _sign(payload: str) -> str:
     return hmac.new(_SECRET, payload.encode(), hashlib.sha256).hexdigest()
 
 
-def issue_token(username: str) -> str:
-    payload = base64.urlsafe_b64encode(f"{username}|{int(time.time()) + TOKEN_TTL_SECONDS}".encode()).decode()
+def issue_token(username: str, kind: str = "", sid: str = "") -> str:
+    expires = int(time.time()) + TOKEN_TTL_SECONDS
+    payload = base64.urlsafe_b64encode(f"{username}|{expires}|{kind}|{sid}".encode()).decode()
     return f"{payload}.{_sign(payload)}"
 
 
-def parse_token(token: str) -> str | None:
+def parse_claims(token: str) -> tuple[str, str, str] | None:
+    """Returns (username, kind, sid). Tokens without a session have empty kind and sid."""
     payload, _, signature = token.partition(".")
     if not payload or not hmac.compare_digest(signature, _sign(payload)):
         return None
     try:
-        username, expires = base64.urlsafe_b64decode(payload.encode()).decode().rsplit("|", 1)
-        return username if int(expires) > time.time() else None
+        parts = base64.urlsafe_b64decode(payload.encode()).decode().split("|")
+        if len(parts) == 2:
+            parts += ["", ""]
+        username, expires, kind, sid = parts
+        return (username, kind, sid) if int(expires) > time.time() else None
     except (ValueError, UnicodeDecodeError):
         return None
 
 
+def parse_token(token: str) -> str | None:
+    claims = parse_claims(token)
+    return claims[0] if claims else None
+
+
 async def require_auth(authorization: str = Header(default="")) -> str:
     scheme, _, token = authorization.partition(" ")
-    user = parse_token(token) if scheme.lower() == "bearer" else None
-    if user is None:
+    claims = parse_claims(token) if scheme.lower() == "bearer" else None
+    if claims is None:
         raise HTTPException(401, "Sign in required", headers={"WWW-Authenticate": "Bearer"})
+    user, kind, sid = claims
+    if kind and not users.session_current(user, kind, sid):
+        raise HTTPException(401, "Signed in on another device. Sign in again.", headers={"WWW-Authenticate": "Bearer"})
     return user

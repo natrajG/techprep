@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  fetchRecoveryEmail, loadConfig, readResetToken, requestPasswordReset, resetPassword, saveRecoveryEmail, signup,
+  fetchRecoveryEmail, loadConfig, login, readResetToken, requestPasswordReset, resetPassword, saveRecoveryEmail, signup,
 } from "../src/auth.mjs";
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -64,4 +64,23 @@ test("config reports whether password reset is available", async () => {
   const config = (extra) => async () => json(200, { signup_enabled: false, minimum_password: 12, local_network: false, store_url: null, ...extra });
   assert.equal((await loadConfig("https://api", config({ password_reset_enabled: true }))).password_reset_enabled, true);
   assert.equal((await loadConfig("https://api", config({}))).password_reset_enabled, false);
+});
+
+test("desktop sign-in identifies itself so it only replaces the previous desktop session", async () => {
+  const store = new Map();
+  const storage = { setItem: (k, v) => store.set(k, v) };
+  const seen = [];
+  const fetchImpl = async (_url, init) => {
+    seen.push(init.headers);
+    return { ok: true, json: async () => ({ token: "t", user: "u" }) };
+  };
+  await login("https://x", "u", "p", fetchImpl, storage);
+  globalThis.window = { desktop: {} };
+  try {
+    await login("https://x", "u", "p", fetchImpl, storage);
+  } finally {
+    delete globalThis.window;
+  }
+  assert.equal(seen[0]["X-Client-Kind"], undefined);
+  assert.equal(seen[1]["X-Client-Kind"], "desktop");
 });

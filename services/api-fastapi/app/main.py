@@ -147,6 +147,13 @@ def public_config() -> dict:
     }
 
 
+async def new_session_token(username: str, request: Request) -> str:
+    """Signing in replaces the account's previous session for the same client kind."""
+    kind = "desktop" if request.headers.get("x-client-kind") == "desktop" else "web"
+    sid = await run_in_threadpool(users.start_session, username, kind)
+    return auth.issue_token(username, kind, sid)
+
+
 @app.post("/api/v1/login")
 async def login(req: LoginRequest, request: Request) -> dict:
     await run_in_threadpool(rate_limit.login_gate, request, req.username)
@@ -159,11 +166,11 @@ async def login(req: LoginRequest, request: Request) -> dict:
             raise HTTPException(503, "Login is not configured: set APP_USERNAME and APP_PASSWORD in .env")
         await asyncio.sleep(1)  # slows password guessing
         raise HTTPException(401, "Incorrect username or password")
-    return {"token": auth.issue_token(user), "user": user}
+    return {"token": await new_session_token(user, request), "user": user}
 
 
 @app.post("/api/v1/signup", dependencies=[Depends(rate_limit.auth_attempt)])
-async def signup(req: SignupRequest) -> dict:
+async def signup(req: SignupRequest, request: Request) -> dict:
     if not users.signup_enabled():
         raise HTTPException(403, "Sign up is disabled")
     problem = users.validate(req.username, req.password)
@@ -175,7 +182,7 @@ async def signup(req: SignupRequest) -> dict:
     reserved = auth.configured() and req.username.lower() == os.environ["APP_USERNAME"].lower()
     if reserved or not await users.in_hash_pool(users.create_user, req.username, req.password, email):
         raise HTTPException(409, "That username or email is already registered")
-    return {"token": auth.issue_token(req.username), "user": req.username}
+    return {"token": await new_session_token(req.username, request), "user": req.username}
 
 
 RESET_SENT = {"message": "If that email is registered, a reset link has been sent."}

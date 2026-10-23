@@ -8,10 +8,13 @@ export const login = (api, username, password, fetchImpl, storage) =>
 export const signup = (api, username, password, email, fetchImpl, storage) =>
   authenticate("signup", api, { username, password, email }, fetchImpl, storage);
 
+// The server keeps one live session per account for the desktop app and one for the website.
+const clientKindHeader = () => (typeof window !== "undefined" && window.desktop ? { "X-Client-Kind": "desktop" } : {});
+
 async function authenticate(action, api, credentials, fetchImpl = fetch, storage = localStorage) {
   const response = await fetchImpl(`${api}/api/v1/${action}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...clientKindHeader() },
     body: JSON.stringify(credentials),
   });
   const body = await response.json().catch(() => ({}));

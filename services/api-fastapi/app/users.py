@@ -57,6 +57,14 @@ def _users_schema(conn: sqlite3.Connection) -> None:
         )"""
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (username)")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS user_sessions (
+            username TEXT NOT NULL COLLATE NOCASE,
+            kind TEXT NOT NULL,
+            sid TEXT NOT NULL,
+            PRIMARY KEY (username, kind)
+        )"""
+    )
 
 
 register_schema(lambda conn: _users_schema(conn))
@@ -174,6 +182,39 @@ def set_password(username: str, password: str) -> None:
     salt = secrets.token_bytes(16)
     with connect() as conn:
         conn.execute("UPDATE users SET salt = ?, hash = ? WHERE username = ?", (salt, _hash(password, salt), username))
+        conn.execute("DELETE FROM user_sessions WHERE username = ?", (username,))
+    _session_cache.clear()
+
+
+# One live session per account and client kind (desktop or web). Signing in again replaces the
+# previous session, which stops working. Workers re-read the database after a few seconds, so
+# the older device is signed out within SESSION_CACHE_SECONDS.
+SESSION_KINDS = ("desktop", "web")
+SESSION_CACHE_SECONDS = 3
+_session_cache: dict[tuple[str, str], tuple[str, float]] = {}
+
+
+def start_session(username: str, kind: str) -> str:
+    sid = secrets.token_urlsafe(12)
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO user_sessions (username, kind, sid) VALUES (?, ?, ?) "
+            "ON CONFLICT (username, kind) DO UPDATE SET sid = excluded.sid",
+            (username, kind, sid),
+        )
+    _session_cache[(username.lower(), kind)] = (sid, time.monotonic() + SESSION_CACHE_SECONDS)
+    return sid
+
+
+def session_current(username: str, kind: str, sid: str) -> bool:
+    key = (username.lower(), kind)
+    cached = _session_cache.get(key)
+    if cached is None or cached[1] <= time.monotonic():
+        with connect() as conn:
+            row = conn.execute("SELECT sid FROM user_sessions WHERE username = ? AND kind = ?", key).fetchone()
+        cached = (row[0] if row else "", time.monotonic() + SESSION_CACHE_SECONDS)
+        _session_cache[key] = cached
+    return hmac.compare_digest(cached[0], sid)
 
 
 def _token_digest(token: str) -> str:
