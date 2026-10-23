@@ -156,8 +156,16 @@ app.whenReady().then(async () => {
   });
   // Desktop system loopback for supported platforms.
   ses.setDisplayMediaRequestHandler(async (request, cb) => {
-    if (!win || win.isDestroyed() || request.frame !== win.webContents.mainFrame ||
-        request.securityOrigin !== APP_ORIGIN || !request.audioRequested) {
+    // Electron reports securityOrigin as a URL spec ("https://host/"), so compare parsed origins.
+    let requestOrigin = null;
+    try { requestOrigin = new URL(request.securityOrigin).origin; } catch { /* denied below */ }
+    const denied = !win || win.isDestroyed() ? "no overlay window"
+      : request.frame !== win.webContents.mainFrame ? "request is not from the overlay main frame"
+      : requestOrigin !== APP_ORIGIN ? `unexpected origin ${request.securityOrigin}`
+      : !request.audioRequested ? "audio was not requested"
+      : null;
+    if (denied) {
+      logger.warn(`Denied display-media request: ${denied}`);
       cb({});
       return;
     }

@@ -396,7 +396,7 @@ $env:TECHPREP_SERVER_URL = "https://13-201-213-33.sslip.io/"
 npm --prefix desktop run store:win
 ```
 
-Find `desktop/release/store/TechPrep-Store-0.1.1-x64.appx` (the version in the filename
+Find `desktop/release/store/TechPrep-Store-0.1.2-x64.appx` (the version in the filename
 follows `desktop/package.json`). Upload **that `.appx` file**, not `TechPrep-Setup.exe`,
 under Partner Center > TechPrep > Submission > Packages. The Store build uses the
 reserved identity `NatrajG.TechPrep`, publisher

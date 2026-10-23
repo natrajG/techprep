@@ -137,7 +137,7 @@ test("Windows overlay gets loopback audio without the browser source picker", as
   const window = signIn(boot1);
   let selection;
   await boot1.permissions.display({
-    frame: window.webContents.mainFrame, securityOrigin: "https://172.168.20.55:5173", audioRequested: true,
+    frame: window.webContents.mainFrame, securityOrigin: "https://172.168.20.55:5173/", audioRequested: true,
   }, (value) => { selection = value; });
   assert.equal(selection.video.id, "screen:0");
   assert.equal(selection.audio, "loopback");
@@ -163,7 +163,7 @@ test("macOS overlay requests loopback audio without the browser source picker", 
   const window = signIn(boot1);
   let selection;
   await boot1.permissions.display({
-    frame: window.webContents.mainFrame, securityOrigin: "https://172.168.20.55:5173", audioRequested: true,
+    frame: window.webContents.mainFrame, securityOrigin: "https://172.168.20.55:5173/", audioRequested: true,
   }, (value) => { selection = value; });
   assert.equal(selection.video.id, "screen:0");
   assert.equal(selection.audio, "loopback");
@@ -172,8 +172,8 @@ test("macOS overlay requests loopback audio without the browser source picker", 
 test("display capture denies other frames/origins and reports unavailable sources through denial", async () => {
   const boot1 = await boot();
   const window = signIn(boot1);
-  const good = { frame: window.webContents.mainFrame, securityOrigin: "http://127.0.0.1:8000", audioRequested: true };
-  for (const request of [{ ...good, frame: {} }, { ...good, securityOrigin: "https://elsewhere.example" }, { ...good, audioRequested: false }]) {
+  const good = { frame: window.webContents.mainFrame, securityOrigin: "http://127.0.0.1:8000/", audioRequested: true };
+  for (const request of [{ ...good, frame: {} }, { ...good, securityOrigin: "https://elsewhere.example/" }, { ...good, securityOrigin: "http://127.0.0.1:8000.evil.example/" }, { ...good, securityOrigin: "not a url" }, { ...good, audioRequested: false }]) {
     await boot1.permissions.display(request, (value) => assert.equal(Object.keys(value).length, 0));
   }
   for (const unavailable of [{ sources: [] }, { sourceError: new Error("capture unavailable") }]) {
