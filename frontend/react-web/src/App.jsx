@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { restoreCaptureProtection, changeCaptureProtection } from "./capture-protection.mjs";
 import CaptureProtectionSettings from "./CaptureProtectionSettings";
@@ -8,7 +8,7 @@ import { transcribeAudio } from "./transcription.mjs";
 import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
 import { clampHudOpacity, MIN_HUD_OPACITY } from "./hud-opacity.mjs";
-import { fetchSubscriptionStatus } from "./subscriptions.mjs";
+import { fetchSubscriptionStatus, lowCallWarning } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
 import "./overlay.css";
@@ -68,7 +68,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
 
-  useEffect(() => {
+  const lowCalls = lowCallWarning(subscription);
+  const wasListening = useRef(false);
+  const refreshSubscription = useCallback(() => {
     fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
       .then((data) => {
         setTokenUsage(data.token_usage);
@@ -82,6 +84,13 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       })
       .catch(() => {});
   }, []);
+
+  useEffect(refreshSubscription, [refreshSubscription]);
+  // A call is counted when it starts, so reload the balance once the user stops listening.
+  useEffect(() => {
+    if (wasListening.current && !listening) refreshSubscription();
+    wasListening.current = listening;
+  }, [listening, refreshSubscription]);
 
   function openProfile() {
     setShowProfileModal(true);
@@ -475,6 +484,17 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       )}
 
       {!desktop && <DesktopDownload localNetwork={localNetwork} storeUrl={storeUrl} />}
+
+      {!subExpired && lowCalls && (
+        <div className="hud-sub-low" role="status">
+          <span style={{ fontSize: 13, color: "#fde68a" }}>
+            ⚠️ <strong>Only {lowCalls.remaining} of {lowCalls.total} calls left.</strong> Renew soon so your next interview is not interrupted.
+          </span>
+          <button type="button" className="hud-renew-btn" onClick={handleRenewClick}>
+            Renew Plan
+          </button>
+        </div>
+      )}
 
       {subExpired && (
         <div className="hud-sub-expired">

@@ -82,3 +82,11 @@ export async function uploadCustomQr(api, file, fetchImpl = fetch, storage = loc
   }
   return res.json();
 }
+
+// Warns when 10% or less of a multi-call plan's calls are left. A plan with one call never warns.
+export function lowCallWarning(subscription) {
+  if (subscription?.status !== "active") return null;
+  const { calls_remaining: remaining, calls_total: total } = subscription;
+  if (!Number.isInteger(remaining) || !Number.isInteger(total) || total < 2 || remaining < 1) return null;
+  return remaining * 10 <= total ? { remaining, total } : null;
+}

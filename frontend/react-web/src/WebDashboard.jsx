@@ -3,6 +3,7 @@ import RecoveryEmail from "./RecoveryEmail";
 import DesktopDownload from "./DesktopDownload";
 import SubscriptionPricing from "./SubscriptionPricing";
 import AdminPlans from "./AdminPlans";
+import { lowCallWarning } from "./subscriptions.mjs";
 
 export default function WebDashboard({
   user,
@@ -17,6 +18,7 @@ export default function WebDashboard({
 }) {
   const [showPricing, setShowPricing] = useState(false);
   const hasActiveSub = subscription && subscription.status === "active";
+  const lowCalls = lowCallWarning(subscription);
   const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
     subscription.call_time_remaining_seconds === 0;
   const timeLeftMinutes = subscription?.time_remaining_seconds
@@ -83,6 +85,13 @@ export default function WebDashboard({
                     Upgrade / Renew
                   </button>
                 </div>
+
+                {lowCalls && (
+                  <div role="status" style={styles.lowCallsNotice}>
+                    ⚠️ <strong>Only {lowCalls.remaining} of {lowCalls.total} calls left.</strong> Renew soon so your next interview is not interrupted.
+                    <button style={styles.actionBtn} onClick={() => setShowPricing(true)}>Renew now</button>
+                  </div>
+                )}
 
                 <div style={styles.detailBox}>
                   <div style={styles.detailItem}>
@@ -202,6 +211,11 @@ export default function WebDashboard({
 }
 
 const styles = {
+  lowCallsNotice: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+    padding: "10px 14px", borderRadius: 10, fontSize: 13, color: "#fde68a",
+    background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(251, 191, 36, 0.5)",
+  },
   container: {
     minHeight: "100vh",
     background: "#080a11",

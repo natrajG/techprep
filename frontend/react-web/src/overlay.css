@@ -134,6 +134,17 @@ body { background: #080a11; }
   gap: 10px;
   margin-bottom: 6px;
 }
+.hud-sub-low {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(180, 83, 9, 0.3) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
 .hud-renew-btn {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
   color: #fff !important;
