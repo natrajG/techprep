@@ -16,14 +16,20 @@ process.on("unhandledRejection", (reason) => logger.error("unhandledRejection:",
 if (process.platform === "linux") app.commandLine.appendSwitch("ozone-platform", "x11");
 
 // Linux: Chromium hides PulseAudio "monitor" sources, so route the app's default audio input to the
-// monitor of the current output device (= what you hear). Set AUDIO_SOURCE=mic to use the microphone.
+// monitor of the current output device (= what you hear).
 function resolveSystemAudioSource() {
-  if (process.platform !== "linux" || process.env.PULSE_SOURCE || process.env.AUDIO_SOURCE === "mic") return;
+  if (process.platform !== "linux") return;
+  if (process.env.PULSE_SOURCE?.endsWith(".monitor")) return;
+  if (process.env.PULSE_SOURCE) {
+    logger.warn("Ignoring a non-monitor PULSE_SOURCE; only system audio is supported.");
+    delete process.env.PULSE_SOURCE;
+  }
   try {
     const sink = execFileSync("pactl", ["get-default-sink"], { encoding: "utf8" }).trim();
-    if (sink) process.env.PULSE_SOURCE = `${sink}.monitor`;
+    if (!sink) throw new Error("No default output device");
+    process.env.PULSE_SOURCE = `${sink}.monitor`;
   } catch {
-    logger.warn("pactl not available; using the default microphone for audio capture.");
+    logger.error("Cannot find a system audio monitor. Check the default output and install pactl.");
   }
 }
 resolveSystemAudioSource();

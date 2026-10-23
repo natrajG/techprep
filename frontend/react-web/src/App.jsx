@@ -5,6 +5,7 @@ import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import DesktopDownload from "./DesktopDownload";
 import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
+import { startChunkRecorder } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
@@ -13,8 +14,6 @@ import "./overlay.css";
 
 // Vite proxies API requests; FastAPI serves them directly in the desktop app.
 const API = import.meta.env.VITE_API_URL || "";
-const CHUNK_MS = 6000;
-const SILENCE_PEAK = 0.02; // max |sample| below this for a whole chunk = silence
 const load = (k, d = "") => localStorage.getItem(k) ?? d;
 const desktop = window.desktop; // exposed by the Electron preload script
 // On Linux the desktop app records its default input, which it routes to the PulseAudio monitor (system audio).
@@ -34,12 +33,22 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [listening, setListening] = useState(false);
-  const [audioMode, setAudioMode] = useState(load("audioMode", desktop?.platform === "win32" ? "both" : "system"));
+  const [captureStarting, setCaptureStarting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const historyRef = useRef([]);
   const streamRef = useRef(null);
-  const timerRef = useRef(null);
+  const sourceStreamsRef = useRef([]);
+  const stopRecorderRef = useRef(null);
+  const startingRef = useRef(false);
+  const captureSessionRef = useRef(0);
+  const transcriptEpochRef = useRef(0);
+  const transcriptionQueueRef = useRef(Promise.resolve());
+  const transcriptRef = useRef("");
+  const lastAnsweredRef = useRef("");
+  const autoAnswerPendingRef = useRef(null);
+  const activityVersionRef = useRef(0);
+  const busyRef = useRef(false);
   const audioCtxRef = useRef(null);
   const [onTop, setOnTop] = useState(load("onTop", "true") === "true");
   const [opacity, setOpacity] = useState(Number(load("opacity", "0.85")));
@@ -116,7 +125,6 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   useEffect(() => localStorage.setItem("resume", resume), [resume]);
   useEffect(() => localStorage.setItem("jd", jd), [jd]);
   useEffect(() => localStorage.setItem("opacity", String(opacity)), [opacity]);
-  useEffect(() => localStorage.setItem("audioMode", audioMode), [audioMode]);
   useEffect(() => {
     if (!desktop) return;
     localStorage.setItem("onTop", String(onTop));
@@ -128,140 +136,202 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     document.body.style.background = "transparent";
     document.body.style.margin = "0";
   }, []);
-  async function sendChunk(blob) {
-    try {
-      const text = await transcribeAudio(API, blob, fetch, localStorage, notifyExpired);
-      if (text.trim()) setTranscript((t) => (t + " " + text.trim()).slice(-20000));
-    } catch (e) {
-      if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
-        stopListening();
-        setSubExpired(true);
-        setStatus("Subscription expired. Please renew access.");
-        return;
+  function sendChunk(blob, epoch) {
+    transcriptionQueueRef.current = transcriptionQueueRef.current.then(async () => {
+      if (epoch !== transcriptEpochRef.current) return;
+      try {
+        const text = await transcribeAudio(API, blob, fetch, localStorage, notifyExpired);
+        if (epoch === transcriptEpochRef.current && text.trim()) {
+          transcriptRef.current = (transcriptRef.current + " " + text.trim()).slice(-20000);
+          setTranscript(transcriptRef.current);
+          if (streamRef.current) setStatus("Listening…");
+        }
+      } catch (e) {
+        if (epoch !== transcriptEpochRef.current) return;
+        if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
+          stopListening();
+          setSubExpired(true);
+          setStatus("Subscription expired. Please renew access.");
+          return;
+        }
+        setStatus("Transcription error: " + e.message);
       }
-      setStatus("Transcription error: " + e.message);
-    }
+    });
   }
 
-  // Each cycle creates a fresh MediaRecorder so every chunk is a standalone, decodable file.
-  // Silent chunks are skipped: Whisper hallucinates words ("you", "Thanks for watching") on silence.
-  function recordCycle(audioStream, analyser) {
-    const rec = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
-    const parts = [];
-    const buf = new Float32Array(analyser.fftSize);
-    let peak = 0;
-    const meter = setInterval(() => {
-      analyser.getFloatTimeDomainData(buf);
-      for (const v of buf) peak = Math.max(peak, Math.abs(v));
-    }, 100);
-    rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
-    rec.onstop = () => {
-      clearInterval(meter);
-      if (peak > SILENCE_PEAK) sendChunk(new Blob(parts, { type: "audio/webm" }));
-    };
-    rec.start();
-    timerRef.current = setTimeout(() => {
-      if (rec.state === "recording") rec.stop();
-      if (streamRef.current) recordCycle(audioStream, analyser);
-    }, CHUNK_MS);
+  function clearTranscript() {
+    transcriptEpochRef.current++;
+    transcriptionQueueRef.current = Promise.resolve();
+    transcriptRef.current = "";
+    lastAnsweredRef.current = "";
+    autoAnswerPendingRef.current = null;
+    setTranscript("");
+  }
+
+  function tryAutoAnswer() {
+    const pending = autoAnswerPendingRef.current;
+    if (!pending || busyRef.current) return;
+    if (pending.captureSession !== captureSessionRef.current ||
+        pending.epoch !== transcriptEpochRef.current ||
+        pending.activity !== activityVersionRef.current || !streamRef.current) {
+      autoAnswerPendingRef.current = null;
+      return;
+    }
+    const fullTranscript = transcriptRef.current;
+    const newSpeech = fullTranscript.startsWith(lastAnsweredRef.current)
+      ? fullTranscript.slice(lastAnsweredRef.current.length).trim()
+      : fullTranscript.trim();
+    autoAnswerPendingRef.current = null;
+    if (!newSpeech) return;
+    lastAnsweredRef.current = fullTranscript;
+    setStatus("Answering after the speech pause…");
+    getAnswer(newSpeech);
+  }
+
+  function queueAutoAnswer(captureSession) {
+    const activity = activityVersionRef.current;
+    const epoch = transcriptEpochRef.current;
+    transcriptionQueueRef.current.then(() => {
+      if (captureSession !== captureSessionRef.current ||
+          activity !== activityVersionRef.current || epoch !== transcriptEpochRef.current) return;
+      autoAnswerPendingRef.current = { captureSession, activity, epoch };
+      tryAutoAnswer();
+    });
   }
 
   async function startListening() {
+    if (startingRef.current || streamRef.current) return;
     if (subExpired) {
       handleRenewClick();
       return;
     }
-    const streams = [];
-    const warnings = [];
+    startingRef.current = true;
+    setCaptureStarting(true);
+    const captureSession = ++captureSessionRef.current;
+    transcriptEpochRef.current++;
+    transcriptionQueueRef.current = Promise.resolve();
+    lastAnsweredRef.current = transcriptRef.current;
+    autoAnswerPendingRef.current = null;
+    let system;
     try {
-      if (audioMode !== "microphone") {
-        let system;
-        try {
-          system = useDeviceInput
-            ? await navigator.mediaDevices.getUserMedia({
-              audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-            })
-            : await navigator.mediaDevices.getDisplayMedia({
-              audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-              video: true,
-            });
-          system.getVideoTracks().forEach((track) => {
-            track.stop();
-            system.removeTrack(track);
-          });
-          if (!system.getAudioTracks().length) {
-            throw new Error("No system audio was shared.");
-          }
-          streams.push(system);
-        } catch (error) {
-          system?.getTracks().forEach((track) => track.stop());
-          if (audioMode !== "both") throw error;
-          warnings.push(`System audio unavailable: ${error.message}`);
-        }
+      if (useDeviceInput && !/\.monitor$/.test(desktop.audioSource)) {
+        throw new Error("System audio monitor is unavailable. Check the default output device and restart TechPrep.");
       }
-      if (audioMode === "both" || audioMode === "microphone") {
-        let mic;
-        try {
-          mic = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-          });
-          if (!mic.getAudioTracks().length) throw new Error("No microphone audio is available.");
-          streams.push(mic);
-        } catch (error) {
-          mic?.getTracks().forEach((track) => track.stop());
-          if (audioMode !== "both") throw error;
-          warnings.push(`Microphone unavailable: ${error.message}`);
-        }
+      system = useDeviceInput
+        ? await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        })
+        : await navigator.mediaDevices.getDisplayMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          video: true,
+        });
+      if (captureSession !== captureSessionRef.current) {
+        system.getTracks().forEach((track) => track.stop());
+        return;
       }
-      if (!streams.length) throw new Error(warnings.join(" "));
-      const audioTracks = streams.flatMap((stream) => stream.getAudioTracks());
+      if (!system.getAudioTracks().length) throw new Error("No system audio was shared.");
+      system.getVideoTracks().forEach((track) => { track.enabled = false; });
+      sourceStreamsRef.current = [system];
+      const audioTracks = system.getAudioTracks();
       streamRef.current = new MediaStream(audioTracks);
-      audioTracks.forEach((track) => { track.onended = stopListening; });
+      audioTracks.forEach((track) => {
+        track.onended = () => {
+          stopListening();
+          setStatus("Audio source ended. Check the meeting's speaker output and restart Listen.");
+        };
+      });
       audioCtxRef.current = new AudioContext();
       await audioCtxRef.current.resume();
+      if (captureSession !== captureSessionRef.current) return;
 
       const destination = audioCtxRef.current.createMediaStreamDestination();
       const analyser = audioCtxRef.current.createAnalyser();
       analyser.fftSize = 2048;
-      for (const stream of streams) {
-        const source = audioCtxRef.current.createMediaStreamSource(stream);
-        const highpass = audioCtxRef.current.createBiquadFilter();
-        highpass.type = "highpass";
-        highpass.frequency.value = 80;
-        source.connect(highpass);
-        highpass.connect(destination);
-        highpass.connect(analyser);
-      }
+      const source = audioCtxRef.current.createMediaStreamSource(system);
+      const highpass = audioCtxRef.current.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 80;
+      source.connect(highpass);
+      highpass.connect(destination);
+      highpass.connect(analyser);
 
-      recordCycle(destination.stream, analyser);
+      stopRecorderRef.current = startChunkRecorder({
+        stream: destination.stream,
+        analyser,
+        onCycleStart: () => transcriptEpochRef.current,
+        onChunk: (blob, chunkEpoch) => {
+          if (captureSession === captureSessionRef.current) sendChunk(blob, chunkEpoch);
+        },
+        onActivity: () => { activityVersionRef.current++; },
+        onPause: () => queueAutoAnswer(captureSession),
+        onSilence: () => {
+          if (captureSession === captureSessionRef.current && streamRef.current) {
+            setStatus(desktop?.platform === "win32"
+              ? "No system audio detected. Set the meeting speaker to the Windows default output and restart Listen."
+              : "No shared audio detected. Check the selected audio source and restart Listen.");
+          }
+        },
+        onError: (error) => {
+          stopListening();
+          setStatus("Audio recording failed: " + error.message);
+        },
+      });
+      if (!streamRef.current) {
+        stopRecorderRef.current?.();
+        stopRecorderRef.current = null;
+        return;
+      }
       setListening(true);
-      if (warnings.length) console.warn("Audio capture is partial:", warnings.join(" "));
-      setStatus(warnings.length ? `Listening with one source. ${warnings.join(" ")}` : "Listening…");
+      setStatus("Listening…");
     } catch (e) {
-      streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+      system?.getTracks().forEach((track) => track.stop());
+      if (captureSession !== captureSessionRef.current) return;
       // Logged via console.error so it lands in the desktop app's persistent log file
       // (desktop/main.js forwards renderer console output there) for support/debugging.
       console.error("startListening failed:", e);
       stopListening();
       setStatus("Capture failed: " + e.message);
+    } finally {
+      startingRef.current = false;
+      setCaptureStarting(false);
     }
   }
 
   function stopListening() {
-    clearTimeout(timerRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    const wasStarting = startingRef.current;
+    if (wasStarting) captureSessionRef.current++;
+    autoAnswerPendingRef.current = null;
+    stopRecorderRef.current?.();
+    stopRecorderRef.current = null;
+    sourceStreamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    }));
+    sourceStreamsRef.current = [];
     streamRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     setListening(false);
-    setStatus("Stopped.");
+    setStatus(wasStarting ? "Capture cancelled. Close any sharing dialog before restarting." : "Stopped.");
   }
 
-  async function getAnswer() {
+  async function getAnswer(autoTranscript = null) {
+    if (busyRef.current) return;
     if (subExpired) {
       handleRenewClick();
       return;
     }
+    const requestedTranscript = autoTranscript ?? transcriptRef.current;
+    const requestedQuestion = autoTranscript === null ? manualQ : "";
+    if (!requestedQuestion.trim() && !requestedTranscript.trim()) {
+      setStatus("No speech captured yet. Check the meeting's speaker output or type a question.");
+      return;
+    }
+    if (autoTranscript === null) {
+      lastAnsweredRef.current = transcriptRef.current;
+      autoAnswerPendingRef.current = null;
+    }
+    busyRef.current = true;
     setBusy(true);
     setAnswer("");
     setQuestion("");
@@ -269,7 +339,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       const r = await authFetch(`${API}/api/v1/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: manualQ, transcript, resume, job_description: jd, history: historyRef.current }),
+        body: JSON.stringify({
+          question: requestedQuestion, transcript: requestedTranscript,
+          resume, job_description: jd, history: historyRef.current,
+        }),
       }, fetch, localStorage, notifyExpired);
       if (!r.ok) {
         const detail = (await r.json()).detail;
@@ -312,7 +385,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           answer: answeredText.slice(0, 4000),
         }].slice(-2);
       }
-      setManualQ("");
+      if (autoTranscript === null) setManualQ("");
     } catch (e) {
       if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
         setSubExpired(true);
@@ -321,7 +394,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         setAnswer("Error: " + e.message);
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
+      tryAutoAnswer();
     }
   }
 
@@ -341,7 +416,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     return out;
   })();
   const sourceHint = desktop?.platform === "win32"
-    ? "Both records meeting audio and your microphone. Microphone-only avoids Windows screen capture and its cursor flicker; system audio requires a brief screen-capture start."
+    ? "Records system sound playing through the Windows default output, including Teams and Google Meet. Your microphone is not recorded."
     : desktop?.platform === "darwin"
       ? "Captures desktop audio on macOS when your system route permits loopback."
       : !desktop
@@ -351,15 +426,15 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const panel = (
     <main className={`hud${desktop ? " hud-desktop" : ""}`} style={{ "--hud-opacity": opacity }}>
       <div className={`hud-bar${desktop ? " hud-drag" : ""}`}>
-        <button className={`hud-pill hud-listen${listening ? " on" : ""}`} onClick={listening ? stopListening : startListening}
-          title={listening ? "Stop listening" : desktop ? "Listen to system audio" : "Listen to meeting tab"}>
+        <button className={`hud-pill hud-listen${listening ? " on" : ""}`} onClick={listening || captureStarting ? stopListening : startListening}
+          title={listening ? "Stop listening" : captureStarting ? "Cancel capture setup" : desktop ? "Listen to system audio" : "Listen to meeting tab"}>
           <span className={`hud-dot${listening ? " live" : ""}`} />
-          {listening ? "Stop" : "Listen"}
+          {listening ? "Stop" : captureStarting ? "Cancel" : "Listen"}
         </button>
-        <button className="hud-pill" disabled={busy} onClick={getAnswer} title="Get answer (Enter)">
+        <button className="hud-pill" disabled={busy} onClick={() => getAnswer()} title="Get answer (Enter)">
           {busy ? "Thinking…" : "Answer"} <kbd>↵</kbd>
         </button>
-        <button className="hud-pill" onClick={() => setTranscript("")} title="Clear transcript">Clear</button>
+        <button className="hud-pill" onClick={clearTranscript} title="Clear transcript">Clear</button>
         <span className="hud-spacer" />
         <button
           className="hud-pill hud-profile-pill"
@@ -448,9 +523,6 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           capturePending={capturePending}
           captureError={captureError}
           requestCaptureProtection={requestCaptureProtection}
-          audioMode={audioMode}
-          setAudioMode={setAudioMode}
-          listening={listening}
         />
       )}
 
@@ -464,18 +536,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       {menuOpen && (
         <section className="hud-card hud-menu">
           <p className="hud-muted" style={{ marginTop: 0 }}>{sourceHint}</p>
-          {desktop?.platform === "win32" && (
-            <label className="hud-muted">Audio source:{" "}
-              <select value={audioMode} disabled={listening} onChange={(e) => setAudioMode(e.target.value)}>
-                <option value="both">System + microphone</option>
-                <option value="system">System audio</option>
-                <option value="microphone">Microphone only (no screen capture)</option>
-              </select>
-            </label>
-          )}
           {useDeviceInput && (
             <p className="hud-muted" title="Set by the desktop app. Restart it after changing your output device.">
-              Audio source: {/\.monitor$/.test(desktop.audioSource) ? "🔊 system audio" : "🎤"} ({desktop.audioSource})
+              Audio source: {/\.monitor$/.test(desktop.audioSource) ? "🔊 system audio" : "unavailable"} ({desktop.audioSource})
             </p>
           )}
           <label className="hud-row">👁 Opacity

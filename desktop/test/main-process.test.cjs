@@ -44,7 +44,7 @@ async function boot({
     }
     setContentProtection(value) { this.calls.push(value); }
     setAlwaysOnTop() {}
-    setSkipTaskbar() {}
+    setSkipTaskbar(value) { this.skipTaskbarCalls ??= []; this.skipTaskbarCalls.push(value); }
     isDestroyed() { return false; }
     loadURL(url) { this.url = url; return Promise.resolve(); }
     show() { this.shown = true; }
@@ -200,6 +200,12 @@ test("the first window is the login window, and the overlay opens only after sig
   assert.equal(windows.length, 2);
   assert.equal(overlay.options.transparent, true);
   assert.equal(overlay.options.alwaysOnTop, true);
+  assert.equal(overlay.options.skipTaskbar, true);
+  assert.equal(login.options.skipTaskbar, undefined);
+  assert.deepEqual(overlay.skipTaskbarCalls, [true]);
+  overlay.emit("ready-to-show");
+  handlers.get("initialize-content-protection")(sender(overlay), true);
+  assert.deepEqual(overlay.skipTaskbarCalls, [true, true]);
   assert.equal(login.closedByApp, true);
   assert.throws(() => handlers.get("login-succeeded")(sender(overlay)), /Only the login window/);
 });

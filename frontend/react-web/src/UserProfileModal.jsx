@@ -29,9 +29,6 @@ export default function UserProfileModal({
   capturePending,
   captureError,
   requestCaptureProtection,
-  audioMode,
-  setAudioMode,
-  listening,
 }) {
   const [activeTab, setActiveTab] = useState("subscription"); // 'subscription' | 'profile' | 'settings' | 'download'
 
@@ -220,16 +217,6 @@ export default function UserProfileModal({
             <div style={styles.tabContent}>
               <div style={styles.cardSection}>
                 <h4 style={styles.sectionTitle}>HUD Visibility &amp; OS Stealth</h4>
-                {desktop?.platform === "win32" && (
-                  <label style={styles.settingRow}>
-                    <span>Audio source (change while stopped)</span>
-                    <select value={audioMode} disabled={listening} onChange={(e) => setAudioMode(e.target.value)}>
-                      <option value="both">System + microphone</option>
-                      <option value="system">System audio</option>
-                      <option value="microphone">Microphone only (avoids screen capture)</option>
-                    </select>
-                  </label>
-                )}
                 <label style={styles.settingRow}>
                   <span>👁️ HUD Glass Opacity</span>
                   <input

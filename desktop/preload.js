@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktop", {
   platform: process.platform,
-  audioSource: process.env.PULSE_SOURCE || "default microphone",
+  audioSource: process.env.PULSE_SOURCE || "unavailable",
   setAlwaysOnTop: (on) => ipcRenderer.invoke("set-always-on-top", on),
   initializeContentProtection: (preference) => ipcRenderer.invoke("initialize-content-protection", preference),
   getContentProtection: () => ipcRenderer.invoke("get-content-protection"),

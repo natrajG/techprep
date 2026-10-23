@@ -140,7 +140,7 @@ for (const readyFirst of [true, false]) {
     assert.ok(!overlay.window.calls.some(([name]) => name === "show"));
     if (readyFirst) overlay.restore(true);
     else overlay.window.emit("ready-to-show");
-    assert.deepEqual(overlay.window.calls.slice(-2), [["protection", true], ["show"]]);
+    assert.deepEqual(overlay.window.calls.slice(-3), [["protection", true], ["show"], ["skipTaskbar", true]]);
     overlay.restore(true);
     assert.equal(overlay.window.calls.filter(([name]) => name === "show").length, 1);
   });
@@ -171,7 +171,7 @@ test("unsupported and failed protection still allow the UI to show its explanati
     });
     overlay.window.emit("ready-to-show");
     assert.equal(overlay.restore(true).enabled, false);
-    assert.deepEqual(overlay.window.calls.at(-1), ["show"]);
+    assert.deepEqual(overlay.window.calls.slice(-2), [["show"], ["skipTaskbar", true]]);
   }
 });
 

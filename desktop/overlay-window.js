@@ -21,6 +21,7 @@ function createOverlayWindow({ BrowserWindow, protection, preload, url, onLoadEr
     if (ready && restored && !shown && !window.isDestroyed()) {
       shown = true;
       window.show();
+      window.setSkipTaskbar(true);
     }
   }
   window.setAlwaysOnTop(true, "floating");
