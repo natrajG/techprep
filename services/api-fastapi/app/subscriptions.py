@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -9,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +38,8 @@ PLANS = {
     },
 }
 CALL_SECONDS = 3600
+TEST_PAYMENT_USER = "testuser_win"
+RAZORPAY_API = "https://api.razorpay.com/v1"
 
 # Configurable UPI Merchant VPA & Name
 DEFAULT_UPI_VPA = os.getenv("UPI_VPA", "8886164220-5@axl")
@@ -103,12 +107,16 @@ def get_db():
         )
         for table, columns in (
             ("subscriptions", ("call_limit", "duration_minutes")),
-            ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days")),
+            ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days",
+                                "provider_order_id", "provider_payment_id")),
         ):
             existing = {column[1] for column in conn.execute(f"PRAGMA table_info({table})")}
             for name in columns:
                 if name not in existing:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {'TEXT' if name == 'plan_name' else 'INTEGER'}")
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {'TEXT' if name in ('plan_name', 'provider_order_id', 'provider_payment_id') else 'INTEGER'}")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_payment ON payment_orders (provider_payment_id)"
+        )
         conn.commit()
         yield conn
 
@@ -119,7 +127,28 @@ class CreateOrderRequest(BaseModel):
 
 class VerifyPaymentRequest(BaseModel):
     order_id: str
-    utr_ref: str = Field(..., min_length=4, max_length=50)
+    utr_ref: str | None = None
+    razorpay_payment_id: str | None = None
+    razorpay_signature: str | None = None
+
+
+def razorpay_credentials() -> tuple[str, str]:
+    key_id = os.getenv("RAZORPAY_KEY_ID")
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET")
+    if not key_id or not key_secret:
+        raise HTTPException(503, "Payment provider is not configured")
+    return key_id, key_secret
+
+
+def razorpay_request(method: str, path: str, **kwargs) -> dict:
+    key_id, key_secret = razorpay_credentials()
+    try:
+        with httpx.Client(timeout=10, auth=(key_id, key_secret)) as client:
+            response = client.request(method, f"{RAZORPAY_API}{path}", **kwargs)
+            response.raise_for_status()
+            return response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(502, "Payment provider unavailable; please try again") from exc
 
 
 class PlanUpdate(BaseModel):
@@ -360,27 +389,46 @@ def create_payment_order(req: CreateOrderRequest, user: str = Depends(require_au
     order_id = f"TP_{int(time.time())}_{secrets.token_hex(4).upper()}"
     now = int(time.time())
     with get_db() as conn:
-        conn.execute("BEGIN IMMEDIATE")
         plan = get_plan(conn, req.plan_id)
+    is_test = user.lower() == TEST_PAYMENT_USER
+    provider_order_id = None
+    upi_uri = ""
+    if is_test:
         upi_uri = build_upi_uri(
             vpa=DEFAULT_UPI_VPA, payee_name=DEFAULT_UPI_NAME, amount=plan["amount"],
             order_id=order_id, note=f"TechPrep {plan['name']}",
         )
+    else:
+        provider_order = razorpay_request(
+            "POST", "/orders",
+            json={"amount": plan["amount"] * 100, "currency": "INR",
+                  "receipt": order_id, "notes": {"plan_id": req.plan_id}},
+        )
+        if (not isinstance(provider_order, dict)
+                or not isinstance(provider_order.get("id"), str)
+                or provider_order.get("amount") != plan["amount"] * 100
+                or provider_order.get("currency") != "INR"):
+            raise HTTPException(502, "Payment provider returned an invalid order")
+        provider_order_id = provider_order["id"]
+    with get_db() as conn:
         conn.execute(
             """INSERT INTO payment_orders
                (order_id, username, plan_id, plan_name, amount, upi_uri, status, created_at,
-                call_limit, duration_minutes, duration_days)
-               VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""",
+                call_limit, duration_minutes, duration_days, provider_order_id)
+               VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)""",
             (order_id, user, plan["id"], plan["name"], plan["amount"], upi_uri, now,
-             plan.get("call_limit"), plan.get("duration_minutes"), plan.get("duration_days")),
+             plan.get("call_limit"), plan.get("duration_minutes"), plan.get("duration_days"), provider_order_id),
         )
     return {
         "order_id": order_id,
         "plan": plan,
         "amount": plan["amount"],
+        "payment_mode": "test_utr" if is_test else "razorpay",
+        "razorpay_order_id": provider_order_id,
+        "razorpay_key_id": None if is_test else razorpay_credentials()[0],
         "upi_uri": upi_uri,
-        "upi_vpa": DEFAULT_UPI_VPA,
-        "upi_name": DEFAULT_UPI_NAME,
+        "upi_vpa": DEFAULT_UPI_VPA if is_test else None,
+        "upi_name": DEFAULT_UPI_NAME if is_test else None,
     }
 
 
@@ -390,21 +438,53 @@ def verify_payment(req: VerifyPaymentRequest, user: str = Depends(require_auth))
     with get_db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         cursor = conn.execute(
-            """SELECT order_id, plan_id, plan_name, amount, status, call_limit, duration_minutes, duration_days
+            """SELECT order_id, plan_id, plan_name, amount, status, call_limit, duration_minutes,
+                      duration_days, provider_order_id
                FROM payment_orders WHERE order_id = ? AND username = ?""",
             (req.order_id, user),
         )
         order = cursor.fetchone()
         if not order:
             raise HTTPException(404, "Payment order not found")
-        order_id, plan_id, plan_name, amount, status, call_limit, duration_minutes, duration_days = order
+        order_id, plan_id, plan_name, amount, status, call_limit, duration_minutes, duration_days, provider_order_id = order
         if status == "verified":
             return {"status": "success", "message": "Payment already verified", "order_id": order_id}
 
-        # In UPI manual/gateway flow, record UTR and activate subscription
+        if user.lower() == TEST_PAYMENT_USER and provider_order_id is None:
+            if not req.utr_ref or not re.fullmatch(r"[0-9]{12}", req.utr_ref):
+                raise HTTPException(422, "Enter a 12-digit UTR")
+            reference = req.utr_ref
+            payment_id = None
+        else:
+            if (not provider_order_id or not req.razorpay_payment_id or not req.razorpay_signature
+                    or not re.fullmatch(r"pay_[A-Za-z0-9]+", req.razorpay_payment_id)):
+                raise HTTPException(422, "Razorpay payment details are required")
+            _, secret = razorpay_credentials()
+            signed = f"{provider_order_id}|{req.razorpay_payment_id}".encode()
+            expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, req.razorpay_signature):
+                raise HTTPException(400, "Invalid payment signature")
+            payment = razorpay_request("GET", f"/payments/{req.razorpay_payment_id}")
+            if (not isinstance(payment, dict)
+                    or payment.get("id") != req.razorpay_payment_id
+                    or payment.get("order_id") != provider_order_id
+                    or payment.get("status") != "captured"
+                    or payment.get("currency") != "INR"
+                    or type(payment.get("amount")) is not int
+                    or payment["amount"] != amount * 100):
+                raise HTTPException(402, "Payment not captured for the full subscription amount")
+            reference = req.razorpay_payment_id
+            payment_id = req.razorpay_payment_id
+
+        if payment_id and conn.execute(
+            "SELECT 1 FROM payment_orders WHERE provider_payment_id = ?", (payment_id,)
+        ).fetchone():
+            raise HTTPException(409, "Payment has already been used for another order")
+
         conn.execute(
-            "UPDATE payment_orders SET status = 'verified', verified_at = ?, utr_ref = ? WHERE order_id = ?",
-            (now, req.utr_ref.strip(), order_id),
+            """UPDATE payment_orders SET status = 'verified', verified_at = ?,
+               utr_ref = ?, provider_payment_id = ? WHERE order_id = ?""",
+            (now, reference, payment_id, order_id),
         )
 
         if plan_id == "monthly":
@@ -421,7 +501,7 @@ def verify_payment(req: VerifyPaymentRequest, user: str = Depends(require_auth))
                 transaction_ref, call_limit, duration_minutes)
                VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)""",
             (user, plan_id, plan_name or PLANS[plan_id]["name"], amount, now, session_start, valid_until,
-             req.utr_ref.strip(), call_limit, duration_minutes),
+             reference, call_limit, duration_minutes),
         )
 
     return {

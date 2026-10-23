@@ -1,19 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { createPaymentOrder, fetchPlans, uploadCustomQr, verifyPayment } from "./subscriptions.mjs";
-import { makeQrSvg } from "./qr.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 
+function loadRazorpay() {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Unable to load Razorpay checkout"));
+    document.head.appendChild(script);
+  });
+}
+
 export default function SubscriptionPricing({ currentSubscription, onPaymentSuccess, onClose, allowQrUpload = false }) {
   const [plans, setPlans] = useState([]);
-  const [customQrUrl, setCustomQrUrl] = useState(null);
   const [selectedPlan, setSelectedPlan] = useState("hourly_call");
   const [order, setOrder] = useState(null);
   const [utrRef, setUtrRef] = useState("");
+  const [pendingPayment, setPendingPayment] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [uploadingQr, setUploadingQr] = useState(false);
   const fileInputRef = useRef(null);
@@ -26,27 +35,9 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
       .then((data) => {
         setPlans(data.plans || []);
         handleSelectPlan("hourly_call");
-        if (data.custom_qr_available && data.custom_qr_url) {
-          setCustomQrUrl(`${API}${data.custom_qr_url}?t=${Date.now()}`);
-        }
       })
       .catch((e) => setError("Failed to load plans: " + e.message));
   }, []);
-
-  async function handleQrFileUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingQr(true);
-    setError("");
-    try {
-      const res = await uploadCustomQr(API, file);
-      setCustomQrUrl(`${API}${res.url}?t=${Date.now()}`);
-    } catch (err) {
-      setError("Failed to upload QR: " + err.message);
-    } finally {
-      setUploadingQr(false);
-    }
-  }
 
   async function handleSelectPlan(planId) {
     const requestId = ++orderRequestRef.current;
@@ -54,6 +45,7 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
     setLoading(true);
     setError("");
     setOrder(null);
+    setPendingPayment(null);
     try {
       const orderData = await createPaymentOrder(API, planId);
       if (requestId === orderRequestRef.current) setOrder(orderData);
@@ -64,13 +56,32 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
     }
   }
 
+  async function handleQrFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingQr(true);
+    setError("");
+    try {
+      await uploadCustomQr(API, file);
+    } catch (err) {
+      setError("Failed to upload QR: " + err.message);
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
   async function handleVerify(e) {
     e.preventDefault();
     if (!order || !utrRef.trim()) return;
+    await activate({ utr_ref: utrRef.trim() });
+  }
+
+  async function activate(details) {
     setVerifying(true);
     setError("");
     try {
-      const res = await verifyPayment(API, order.order_id, utrRef.trim());
+      const res = await verifyPayment(API, order.order_id, details);
+      setPendingPayment(null);
       setSuccessMessage(res.message || "Payment verified! Your access is unlocked.");
       setTimeout(() => {
         if (onPaymentSuccess) onPaymentSuccess();
@@ -82,11 +93,38 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
     }
   }
 
-  function copyUpiUri() {
-    if (!order) return;
-    navigator.clipboard?.writeText(order.upi_uri || order.upi_vpa);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCheckout() {
+    if (!order || verifying) return;
+    if (pendingPayment) {
+      await activate(pendingPayment);
+      return;
+    }
+    setVerifying(true);
+    setError("");
+    try {
+      await loadRazorpay();
+      const checkout = new window.Razorpay({
+        key: order.razorpay_key_id,
+        amount: order.amount * 100,
+        currency: "INR",
+        name: "TechPrep",
+        order_id: order.razorpay_order_id,
+        handler: (payment) => {
+          const details = {
+            razorpay_payment_id: payment.razorpay_payment_id,
+            razorpay_signature: payment.razorpay_signature,
+          };
+          setPendingPayment(details);
+          activate(details);
+        },
+      });
+      checkout.on("payment.failed", (failure) => setError(failure.error?.description || "Payment failed"));
+      checkout.open();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setVerifying(false);
+    }
   }
 
   return (
@@ -163,58 +201,25 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
           </div>}
         </div>
 
-        {/* Payment QR Section */}
+        {/* Payment Section */}
         {loading ? (
-          <div style={styles.loadingBox}>Generating secure UPI QR...</div>
+          <div style={styles.loadingBox}>Preparing payment...</div>
         ) : order ? (
-          <div style={styles.paymentBox}>
-            <div style={styles.qrCol}>
-              <div style={styles.qrWrapper}>
-                <img
-                  src={customQrUrl || makeQrSvg(order.upi_uri, 190)}
-                  alt="UPI QR Code"
-                  style={styles.qrImage}
-                />
+          order.payment_mode === "razorpay" ? (
+            <div style={styles.paymentBox}>
+              <div style={styles.instructionsCol}>
+                <div style={styles.amountNotice}>Pay <strong>₹{order.amount}</strong> securely with Razorpay.</div>
+                <button type="button" onClick={handleCheckout} disabled={verifying} style={styles.verifyBtn}>
+                  {verifying ? "Verifying..." : pendingPayment ? "Retry verification" : "Pay & Activate Access"}
+                </button>
+                {successMessage && <div style={styles.successText}>{successMessage}</div>}
               </div>
-              <div style={styles.supportedApps}>
-                Scan with GPay, PhonePe, Paytm, BHIM, CRED
-              </div>
-              {allowQrUpload && (
-                <div style={{ marginTop: 10, textAlign: "center" }}>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handleQrFileUpload}
-                  />
-                  <button
-                    type="button"
-                    style={styles.uploadQrBtn}
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingQr}
-                  >
-                    {uploadingQr ? "Uploading..." : "📷 Upload Merchant QR"}
-                  </button>
-                  {customQrUrl && (
-                    <div style={{ fontSize: 11, color: "#86efac", marginTop: 4 }}>
-                      ✓ Custom Merchant QR Active
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-
+          ) : (
+          <div style={styles.paymentBox}>
             <div style={styles.instructionsCol}>
               <div style={styles.amountNotice}>
-                Pay exactly: <strong style={{ color: "#38bdf8", fontSize: 18 }}>₹{order.amount}</strong>
-              </div>
-
-              <div style={styles.upiRow}>
-                <span>UPI ID: <strong>{order.upi_vpa}</strong></span>
-                <button type="button" onClick={copyUpiUri} style={styles.copyBtn}>
-                  {copied ? "Copied!" : "Copy"}
-                </button>
+                Test account: no payment required. Activate the <strong>₹{order.amount}</strong> plan with a 12-digit dummy UTR.
               </div>
 
               <form onSubmit={handleVerify} style={styles.verifyForm}>
@@ -223,7 +228,10 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 4289XXXXXXXX"
+                    inputMode="numeric"
+                    pattern="[0-9]{12}"
+                    maxLength={12}
+                    placeholder="e.g. 428912345678"
                     value={utrRef}
                     onChange={(e) => setUtrRef(e.target.value)}
                     style={styles.utrInput}
@@ -241,7 +249,18 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
               {successMessage && <div style={styles.successText}>{successMessage}</div>}
             </div>
           </div>
+          )
         ) : null}
+
+        {allowQrUpload && (
+          <div>
+            <input type="file" ref={fileInputRef} accept="image/*" style={{ display: "none" }} onChange={handleQrFileUpload} />
+            <button type="button" style={styles.uploadQrBtn} onClick={() => fileInputRef.current?.click()} disabled={uploadingQr}>
+              {uploadingQr ? "Uploading..." : "Upload legacy merchant QR"}
+            </button>
+            <span style={styles.secureBadge}> Not used for Razorpay checkout or payment verification.</span>
+          </div>
+        )}
 
         <div style={styles.footerRow}>
           {onClose && (
@@ -249,7 +268,7 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
               Back
             </button>
           )}
-          <span style={styles.secureBadge}>🔒 256-Bit Encrypted UPI Direct Transfer</span>
+          <span style={styles.secureBadge}>{order?.payment_mode === "razorpay" ? "Secure checkout by Razorpay" : "Test payment"}</span>
         </div>
       </div>
     </div>

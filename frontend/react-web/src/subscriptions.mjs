@@ -44,13 +44,13 @@ export async function createPaymentOrder(api, planId, fetchImpl = fetch, storage
   return res.json();
 }
 
-export async function verifyPayment(api, orderId, utrRef, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+export async function verifyPayment(api, orderId, details, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
   const res = await authFetch(
     `${api}/api/v1/subscription/verify`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: orderId, utr_ref: utrRef }),
+      body: JSON.stringify({ order_id: orderId, ...details }),
     },
     fetchImpl,
     storage,

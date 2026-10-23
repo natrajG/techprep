@@ -33,6 +33,8 @@ fi
 echo "==> [3/5] Syncing code to live server..."
 rsync -az \
   -e "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -i $SSH_KEY" \
+  --exclude "/.env" \
+  --exclude "/.certs/" \
   --exclude ".git" \
   --exclude ".idea" \
   --exclude "*.db" \

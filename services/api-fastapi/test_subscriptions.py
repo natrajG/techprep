@@ -1,5 +1,7 @@
 import unittest
 import tempfile
+import hashlib
+import hmac
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -19,7 +21,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         )
-        self.username = f"subtestuser_{id(self)}"
+        self.username = "testuser_win"
         self.token = auth.issue_token(self.username)
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
@@ -79,7 +81,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(old_order["amount"], 1999)
         old_sub = await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": old_order["order_id"], "utr_ref": "FIRSTUTR"}, headers=self.headers,
+            json={"order_id": old_order["order_id"], "utr_ref": "123456789001"}, headers=self.headers,
         )
         self.assertEqual(old_sub.status_code, 200)
         old_status = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
@@ -102,7 +104,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                          ["subscription"]["calls_total"], 30)
         await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": new_order["order_id"], "utr_ref": "SECONDUTR"}, headers=self.headers,
+            json={"order_id": new_order["order_id"], "utr_ref": "123456789002"}, headers=self.headers,
         )
         new_status = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
         self.assertEqual(new_status["calls_total"], 15)
@@ -139,7 +141,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual((await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": old_order["order_id"], "utr_ref": "OLDHOURLY"}, headers=self.headers,
+            json={"order_id": old_order["order_id"], "utr_ref": "123456789003"}, headers=self.headers,
         )).status_code, 200)
         old = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
         self.assertEqual(old["call_duration_minutes"], 60)
@@ -152,7 +154,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(new_order["plan"]["duration_minutes"], 90)
         self.assertEqual((await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": new_order["order_id"], "utr_ref": "NEWHOURLY"}, headers=self.headers,
+            json={"order_id": new_order["order_id"], "utr_ref": "123456789004"}, headers=self.headers,
         )).status_code, 200)
         with patch.object(llm, "transcribe", AsyncMock(return_value="")):
             self.assertEqual((await self.client.post(
@@ -183,7 +185,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         # Verify payment
         verify_res = await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": order_data["order_id"], "utr_ref": "UTR12345678"},
+            json={"order_id": order_data["order_id"], "utr_ref": "123456789005"},
             headers=self.headers,
         )
         self.assertEqual(verify_res.status_code, 200)
@@ -195,6 +197,95 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         sub_status = status_res.json()
         self.assertTrue(sub_status["has_active"])
         self.assertEqual(sub_status["subscription"]["plan_id"], "hourly_call")
+
+    async def test_test_user_requires_twelve_digit_utr(self):
+        order = (await self.client.post(
+            "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
+        )).json()
+        self.assertEqual(order["payment_mode"], "test_utr")
+        for utr in ("12345678901", "12345678901A", "1234567890123", " 123456789012"):
+            response = await self.client.post(
+                "/api/v1/subscription/verify",
+                json={"order_id": order["order_id"], "utr_ref": utr}, headers=self.headers,
+            )
+            self.assertEqual(response.status_code, 422)
+        self.assertFalse((await self.client.get(
+            "/api/v1/subscription/status", headers=self.headers
+        )).json()["has_active"])
+
+    async def test_real_payments_require_captured_full_amount_and_valid_signature(self):
+        headers = {"Authorization": "Bearer " + auth.issue_token("paying_user")}
+        secret = "test-secret"
+        provider_order_id = "order_abc123"
+        payment_id = "pay_abc123"
+        def provider_request(method, path, **kwargs):
+            if method == "POST":
+                return {"id": provider_order_id, "amount": kwargs["json"]["amount"], "currency": "INR"}
+            return payment
+
+        with patch.dict("os.environ", {"RAZORPAY_KEY_ID": "rzp_test_key", "RAZORPAY_KEY_SECRET": secret}):
+            with patch.object(subscriptions, "razorpay_request", side_effect=provider_request):
+                order = (await self.client.post(
+                    "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=headers
+                )).json()
+                self.assertEqual(order["payment_mode"], "razorpay")
+                self.assertEqual(order["razorpay_order_id"], provider_order_id)
+                signature = hmac.new(secret.encode(), f"{provider_order_id}|{payment_id}".encode(), hashlib.sha256).hexdigest()
+                payload = {"order_id": order["order_id"], "razorpay_payment_id": payment_id,
+                           "razorpay_signature": signature}
+                payment = {"id": payment_id, "order_id": provider_order_id,
+                           "status": "captured", "currency": "INR", "amount": 199900}
+                for invalid in (
+                    {"utr_ref": "123456789012"},
+                    {**payload, "razorpay_signature": "invalid"},
+                ):
+                    response = await self.client.post(
+                        "/api/v1/subscription/verify",
+                        json={"order_id": order["order_id"], **invalid}, headers=headers,
+                    )
+                    self.assertNotEqual(response.status_code, 200)
+                for change in (
+                    {"amount": 100}, {"amount": 200000}, {"amount": "199900"},
+                    {"currency": "USD"}, {"status": "authorized"},
+                    {"order_id": "order_other"}, {"id": "pay_other"},
+                ):
+                    with self.subTest(change=change):
+                        payment = {**payment, **change}
+                        response = await self.client.post(
+                            "/api/v1/subscription/verify", json=payload, headers=headers,
+                        )
+                        self.assertEqual(response.status_code, 402)
+                        self.assertFalse((await self.client.get(
+                            "/api/v1/subscription/status", headers=headers,
+                        )).json()["has_active"])
+                        payment = {"id": payment_id, "order_id": provider_order_id,
+                                   "status": "captured", "currency": "INR", "amount": 199900}
+                response = await self.client.post(
+                    "/api/v1/subscription/verify", json=payload, headers=headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue((await self.client.get(
+                    "/api/v1/subscription/status", headers=headers,
+                )).json()["has_active"])
+                self.assertEqual((await self.client.post(
+                    "/api/v1/subscription/verify", json=payload, headers=headers,
+                )).json()["message"], "Payment already verified")
+                second_order = (await self.client.post(
+                    "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=headers,
+                )).json()
+                replay = await self.client.post(
+                    "/api/v1/subscription/verify",
+                    json={**payload, "order_id": second_order["order_id"]}, headers=headers,
+                )
+                self.assertEqual(replay.status_code, 409)
+
+    async def test_real_payment_provider_must_be_configured(self):
+        headers = {"Authorization": "Bearer " + auth.issue_token("paying_user")}
+        with patch.dict("os.environ", {"RAZORPAY_KEY_ID": "", "RAZORPAY_KEY_SECRET": ""}):
+            response = await self.client.post(
+                "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=headers,
+            )
+        self.assertEqual(response.status_code, 503)
 
     async def test_enforced_subscription_gate(self):
         user_unpaid = "unpaid_user"
@@ -210,7 +301,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.subscriptions.time.time", return_value=1000):
             verified = await self.client.post(
                 "/api/v1/subscription/verify",
-                json={"order_id": order.json()["order_id"], "utr_ref": "UTR12345"}, headers=self.headers,
+                json={"order_id": order.json()["order_id"], "utr_ref": "123456789006"}, headers=self.headers,
             )
         self.assertEqual(verified.status_code, 200)
         with patch("app.subscriptions.time.time", return_value=1000):
@@ -267,7 +358,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": renewal.json()["order_id"], "utr_ref": "NEWUTR123"}, headers=self.headers,
+            json={"order_id": renewal.json()["order_id"], "utr_ref": "123456789007"}, headers=self.headers,
         )).status_code, 200)
         renewed = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()
         self.assertEqual(renewed["subscription"]["calls_remaining"], 30)
@@ -304,7 +395,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         )
         await self.client.post(
             "/api/v1/subscription/verify",
-            json={"order_id": order.json()["order_id"], "utr_ref": "UTR12345"}, headers=self.headers,
+            json={"order_id": order.json()["order_id"], "utr_ref": "123456789008"}, headers=self.headers,
         )
         with patch.dict("os.environ", {"ENFORCE_SUBSCRIPTIONS": "true"}):
             response = await self.client.get("/api/v1/subscription/status", headers=self.headers)

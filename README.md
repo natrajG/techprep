@@ -90,6 +90,13 @@ unlimited monthly subscriptions remain unlimited. The account profile shows rema
 AI input/output token usage since tracking began. Audio transcription is not included in the
 token count, and tokens have no separate quota. Set `ENFORCE_SUBSCRIPTIONS=true` to require
 an active paid plan for AI endpoints; existing paid plans always respect their call limits.
+Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` on the API server and enable automatic payment
+capture in Razorpay. All accounts except `testuser_win` pay via Razorpay Checkout; the API
+confirms the signed payment is captured in INR for the full order amount before activating
+the purchased plan. A user-entered UTR alone cannot verify a real payment. The `testuser_win`
+account is an explicit test-only exception: any 12-digit numeric UTR activates its plan
+without payment. Keep that account's credentials private and do not allow public signup
+of this username in a production deployment.
 The public privacy policy is available at `/privacy/` without signing in; deploy the latest
 web build before using its URL in a Store listing.
 
