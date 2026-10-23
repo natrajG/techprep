@@ -32,6 +32,7 @@
       "capture-protection.js",
       "overlay-window.js",
       "server-url.js",
+      "logger.js",
       "package.json"
     ],
     "extraMetadata": {
