@@ -375,8 +375,9 @@ required. This is a Developer ID distribution configuration, not a Mac App
 Store sandbox configuration.
 
 macOS and Windows now request loopback audio through the desktop display-media
-handler; Linux still uses the PulseAudio monitor path. Transcription and AI
-code paths are unchanged.
+handler using basic audio/video capture constraints; microphone-processing
+constraints are not valid for display capture. Linux still uses the PulseAudio
+monitor path. Transcription and AI code paths are unchanged.
 
 ## Microsoft Store package (AppX)
 

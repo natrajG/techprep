@@ -1,3 +1,11 @@
+export function captureSystemAudio(mediaDevices, useDeviceInput) {
+  return useDeviceInput
+    ? mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    })
+    : mediaDevices.getDisplayMedia({ audio: true, video: true });
+}
+
 export function startChunkRecorder({
   stream, analyser, onChunk, onSilence, onError,
   onActivity = () => {}, onPause = () => {},

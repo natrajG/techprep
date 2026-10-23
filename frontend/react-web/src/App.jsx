@@ -5,7 +5,7 @@ import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import DesktopDownload from "./DesktopDownload";
 import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
-import { startChunkRecorder } from "./audio-capture.mjs";
+import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
@@ -217,14 +217,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       if (useDeviceInput && !/\.monitor$/.test(desktop.audioSource)) {
         throw new Error("System audio monitor is unavailable. Check the default output device and restart TechPrep.");
       }
-      system = useDeviceInput
-        ? await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        })
-        : await navigator.mediaDevices.getDisplayMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-          video: true,
-        });
+      system = await captureSystemAudio(navigator.mediaDevices, useDeviceInput);
       if (captureSession !== captureSessionRef.current) {
         system.getTracks().forEach((track) => track.stop());
         return;

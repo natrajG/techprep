@@ -1,6 +1,46 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startChunkRecorder } from "./audio-capture.mjs";
+import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
+
+test("display capture requests system audio without microphone processing constraints", async () => {
+  const stream = {};
+  const requests = [];
+  const mediaDevices = {
+    getDisplayMedia(constraints) {
+      requests.push(constraints);
+      return Promise.resolve(stream);
+    },
+    getUserMedia() {
+      throw new Error("Must not fall back to microphone capture");
+    },
+  };
+  assert.equal(await captureSystemAudio(mediaDevices, false), stream);
+  assert.deepEqual(requests, [{ audio: true, video: true }]);
+});
+
+test("display capture failures propagate without a microphone fallback", async () => {
+  const error = new Error("Invalid capture constraints");
+  const mediaDevices = {
+    getDisplayMedia() { return Promise.reject(error); },
+    getUserMedia() { throw new Error("Must not fall back to microphone capture"); },
+  };
+  await assert.rejects(captureSystemAudio(mediaDevices, false), (reason) => reason === error);
+});
+
+test("Linux monitor capture retains unprocessed audio input", async () => {
+  const requests = [];
+  const mediaDevices = {
+    getUserMedia(constraints) {
+      requests.push(constraints);
+      return Promise.resolve({});
+    },
+    getDisplayMedia() { throw new Error("Monitor input must not use display capture"); },
+  };
+  await captureSystemAudio(mediaDevices, true);
+  assert.deepEqual(requests, [{
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+  }]);
+});
 
 function setup() {
   const timers = new Map();
