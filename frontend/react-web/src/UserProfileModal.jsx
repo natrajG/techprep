@@ -3,6 +3,7 @@ import DesktopDownload from "./DesktopDownload";
 import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import AdminPlans from "./AdminPlans";
 import { splitBold } from "./rich-text.mjs";
+import { MIN_HUD_OPACITY } from "./hud-opacity.mjs";
 
 export default function UserProfileModal({
   user,
@@ -218,14 +219,14 @@ export default function UserProfileModal({
               <div style={styles.cardSection}>
                 <h4 style={styles.sectionTitle}>HUD Visibility &amp; OS Stealth</h4>
                 <label style={styles.settingRow}>
-                  <span>👁️ HUD Glass Opacity</span>
+                  <span>👁️ HUD Background Opacity</span>
                   <input
                     type="range"
-                    min="0.2"
+                    min={MIN_HUD_OPACITY}
                     max="1"
                     step="0.05"
                     value={opacity}
-                    onChange={(e) => setOpacity(Number(e.target.value))}
+                    onChange={(e) => setOpacity(e.target.value)}
                     style={{ width: 140 }}
                   />
                 </label>

@@ -7,6 +7,7 @@ import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
 import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
+import { clampHudOpacity, MIN_HUD_OPACITY } from "./hud-opacity.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
@@ -51,7 +52,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const busyRef = useRef(false);
   const audioCtxRef = useRef(null);
   const [onTop, setOnTop] = useState(load("onTop", "true") === "true");
-  const [opacity, setOpacity] = useState(Number(load("opacity", "0.85")));
+  const [opacity, setOpacityState] = useState(() => clampHudOpacity(load("opacity", "0.85")));
+  const setOpacity = (value) => setOpacityState(clampHudOpacity(value));
+  const answerScrollRef = useRef(null);
+  const followAnswerRef = useRef(true);
   const [captureProtection, setCaptureProtection] = useState({ supported: false, requested: false, status: "loading" });
   const [capturePending, setCapturePending] = useState(true);
   const [captureError, setCaptureError] = useState("");
@@ -125,6 +129,17 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   useEffect(() => localStorage.setItem("resume", resume), [resume]);
   useEffect(() => localStorage.setItem("jd", jd), [jd]);
   useEffect(() => localStorage.setItem("opacity", String(opacity)), [opacity]);
+  // Follow the streaming answer unless the user has scrolled up to read earlier text.
+  useEffect(() => {
+    const box = answerScrollRef.current;
+    if (!box) return;
+    if (!answer) followAnswerRef.current = true;
+    if (followAnswerRef.current) box.scrollTop = box.scrollHeight;
+  }, [answer, question, busy]);
+  function trackAnswerScroll(event) {
+    const box = event.currentTarget;
+    followAnswerRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  }
   useEffect(() => {
     if (!desktop) return;
     localStorage.setItem("onTop", String(onTop));
@@ -534,8 +549,8 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
               Audio source: {/\.monitor$/.test(desktop.audioSource) ? "🔊 system audio" : "unavailable"} ({desktop.audioSource})
             </p>
           )}
-          <label className="hud-row">👁 Opacity
-            <input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />
+          <label className="hud-row">👁 Background opacity
+            <input type="range" min={MIN_HUD_OPACITY} max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(e.target.value)} />
           </label>
           {desktop && (
             <label className="hud-row">
@@ -556,7 +571,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         </section>
       )}
 
-      <section className="hud-card hud-qa">
+      <section className="hud-card hud-qa" ref={answerScrollRef} onScroll={trackAnswerScroll}>
         <div className="hud-row">
           <input
             placeholder="Optional: type the question (otherwise detected from the transcript)"
