@@ -176,6 +176,9 @@ cd ../../desktop && npm install && npm start
 
 - Starts the backend automatically (or reuses one already running on port 8000) and closes it on exit.
 - Header: **📌 On top** toggle, **👁 opacity** slider, minimize/close; drag the window by its title bar.
+- The overlay has no taskbar/Dock entry (stealth). If you minimize it, press **Ctrl+Shift+T**
+  (**Cmd+Shift+T** on macOS) to restore it — don't relaunch the app, since only one desktop session
+  per account stays signed in and a second launch just brings the existing window back to front.
 - **Listen to system audio** records what plays through your speakers (Linux: PulseAudio monitor of
   the default output; Windows: system loopback). A missing Linux monitor is reported rather than
   falling back to the microphone.

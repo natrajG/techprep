@@ -1,6 +1,6 @@
 // Desktop shell: a frameless, transparent, optionally always-on-top window that hosts the web UI.
 // It runs independently of any browser tab; capture protection is platform-dependent.
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net, shell, globalShortcut } = require("electron");
 const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const os = require("os");
@@ -14,6 +14,23 @@ process.on("uncaughtException", (error) => logger.error("uncaughtException:", er
 process.on("unhandledRejection", (reason) => logger.error("unhandledRejection:", reason));
 
 if (process.platform === "linux") app.commandLine.appendSwitch("ozone-platform", "x11");
+
+// The overlay is hidden from the taskbar/Alt+Tab for stealth, so once minimized there is no OS
+// affordance to bring it back. Without this lock, a user who can't find the window relaunches the
+// app, which opens a second login and replaces the first device's session (signing the original,
+// still-running window out). Block second instances; just restore the existing window instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+function restoreExistingWindow() {
+  const target = win && !win.isDestroyed() ? win : loginWin && !loginWin.isDestroyed() ? loginWin : null;
+  if (!target) return;
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.focus();
+}
 
 // Linux: Chromium hides PulseAudio "monitor" sources, so route the app's default audio input to the
 // monitor of the current output device (= what you hear).
@@ -139,102 +156,113 @@ function openLogin() {
   });
 }
 
-app.whenReady().then(async () => {
-  const ses = session.defaultSession;
-  logger.info(`App starting. version=${app.getVersion()} platform=${process.platform} appUrl=${APP_URL}`);
-  // The web UI is fetched live from the server on every launch; force-bypass any HTTP cache so
-  // fixes deployed to the server always show up immediately, without reinstalling the desktop app.
-  try {
-    await ses.clearCache();
-  } catch (error) {
-    logger.warn("Could not clear session cache:", error);
-  }
-  ses.setPermissionRequestHandler((wc, permission, cb, details) => {
-    cb(!!win && !win.isDestroyed() && wc === win.webContents &&
-      details.isMainFrame && details.requestingUrl.startsWith(`${APP_ORIGIN}/`) &&
-      ["media", "display-capture"].includes(permission));
-  });
-  // Desktop system loopback for supported platforms.
-  ses.setDisplayMediaRequestHandler(async (request, cb) => {
-    // Electron reports securityOrigin as a URL spec ("https://host/"), so compare parsed origins.
-    let requestOrigin = null;
-    try { requestOrigin = new URL(request.securityOrigin).origin; } catch { /* denied below */ }
-    const denied = !win || win.isDestroyed() ? "no overlay window"
-      : request.frame !== win.webContents.mainFrame ? "request is not from the overlay main frame"
-      : requestOrigin !== APP_ORIGIN ? `unexpected origin ${request.securityOrigin}`
-      : !request.audioRequested ? "audio was not requested"
-      : null;
-    if (denied) {
-      logger.warn(`Denied display-media request: ${denied}`);
-      cb({});
+if (gotSingleInstanceLock) {
+  app.whenReady().then(async () => {
+    const ses = session.defaultSession;
+    logger.info(`App starting. version=${app.getVersion()} platform=${process.platform} appUrl=${APP_URL}`);
+    // The web UI is fetched live from the server on every launch; force-bypass any HTTP cache so
+    // fixes deployed to the server always show up immediately, without reinstalling the desktop app.
+    try {
+      await ses.clearCache();
+    } catch (error) {
+      logger.warn("Could not clear session cache:", error);
+    }
+    ses.setPermissionRequestHandler((wc, permission, cb, details) => {
+      cb(!!win && !win.isDestroyed() && wc === win.webContents &&
+        details.isMainFrame && details.requestingUrl.startsWith(`${APP_ORIGIN}/`) &&
+        ["media", "display-capture"].includes(permission));
+    });
+    // Desktop system loopback for supported platforms.
+    ses.setDisplayMediaRequestHandler(async (request, cb) => {
+      // Electron reports securityOrigin as a URL spec ("https://host/"), so compare parsed origins.
+      let requestOrigin = null;
+      try { requestOrigin = new URL(request.securityOrigin).origin; } catch { /* denied below */ }
+      const denied = !win || win.isDestroyed() ? "no overlay window"
+        : request.frame !== win.webContents.mainFrame ? "request is not from the overlay main frame"
+        : requestOrigin !== APP_ORIGIN ? `unexpected origin ${request.securityOrigin}`
+        : !request.audioRequested ? "audio was not requested"
+        : null;
+      if (denied) {
+        logger.warn(`Denied display-media request: ${denied}`);
+        cb({});
+        return;
+      }
+      try {
+        const [screen] = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } });
+        if (!screen) throw new Error("No display source is available for system-audio capture.");
+        cb({
+          video: screen,
+          audio: ["win32", "darwin"].includes(process.platform) ? "loopback" : undefined,
+        });
+      } catch (error) {
+        logger.error("Cannot start system-audio capture:", error);
+        cb({});
+      }
+    });
+
+    ipcMain.handle("set-always-on-top", (_e, on) => { win.setAlwaysOnTop(!!on, "floating"); return win.isAlwaysOnTop(); });
+    function requireOverlay(event) {
+      if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
+        throw new Error("Capture protection is only available for the overlay window.");
+      }
+    }
+    ipcMain.handle("initialize-content-protection", (event, preference) => {
+      requireOverlay(event);
+      return overlay.restore(preference);
+    });
+    ipcMain.handle("get-content-protection", (event) => {
+      requireOverlay(event);
+      return protection.getState();
+    });
+    ipcMain.handle("set-content-protection", (event, enabled) => {
+      requireOverlay(event);
+      return protection.setRequested(enabled);
+    });
+    ipcMain.handle("login-succeeded", (event) => {
+      if (!loginWin || event.sender !== loginWin.webContents || event.senderFrame !== loginWin.webContents.mainFrame) {
+        throw new Error("Only the login window can open the overlay.");
+      }
+      const closing = loginWin;
+      loginWin = null;
+      createWindow(); // open the overlay before closing, so the app does not quit in between
+      closing.close();
+    });
+    ipcMain.handle("sign-out", (event) => {
+      if (!win || event.sender !== win.webContents) throw new Error("Only the overlay can sign out.");
+      const closing = win;
+      openLogin();
+      closing.close();
+    });
+    ipcMain.handle("minimize", () => win.minimize());
+    ipcMain.handle("close", () => win.close());
+    ipcMain.handle("open-external", (_event, url) => {
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+        shell.openExternal(url);
+        return true;
+      }
+      return false;
+    });
+
+    try {
+      await ensureBackend();
+    } catch (e) {
+      dialog.showErrorBox("Cannot connect to TechPrep", e.message);
+      app.quit();
       return;
     }
-    try {
-      const [screen] = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } });
-      if (!screen) throw new Error("No display source is available for system-audio capture.");
-      cb({
-        video: screen,
-        audio: ["win32", "darwin"].includes(process.platform) ? "loopback" : undefined,
-      });
-    } catch (error) {
-      logger.error("Cannot start system-audio capture:", error);
-      cb({});
-    }
-  });
-
-  ipcMain.handle("set-always-on-top", (_e, on) => { win.setAlwaysOnTop(!!on, "floating"); return win.isAlwaysOnTop(); });
-  function requireOverlay(event) {
-    if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
-      throw new Error("Capture protection is only available for the overlay window.");
-    }
-  }
-  ipcMain.handle("initialize-content-protection", (event, preference) => {
-    requireOverlay(event);
-    return overlay.restore(preference);
-  });
-  ipcMain.handle("get-content-protection", (event) => {
-    requireOverlay(event);
-    return protection.getState();
-  });
-  ipcMain.handle("set-content-protection", (event, enabled) => {
-    requireOverlay(event);
-    return protection.setRequested(enabled);
-  });
-  ipcMain.handle("login-succeeded", (event) => {
-    if (!loginWin || event.sender !== loginWin.webContents || event.senderFrame !== loginWin.webContents.mainFrame) {
-      throw new Error("Only the login window can open the overlay.");
-    }
-    const closing = loginWin;
-    loginWin = null;
-    createWindow(); // open the overlay before closing, so the app does not quit in between
-    closing.close();
-  });
-  ipcMain.handle("sign-out", (event) => {
-    if (!win || event.sender !== win.webContents) throw new Error("Only the overlay can sign out.");
-    const closing = win;
     openLogin();
-    closing.close();
-  });
-  ipcMain.handle("minimize", () => win.minimize());
-  ipcMain.handle("close", () => win.close());
-  ipcMain.handle("open-external", (_event, url) => {
-    if (typeof url === "string" && /^https?:\/\//i.test(url)) {
-      shell.openExternal(url);
-      return true;
+    app.on("activate", () => { if (!win && !loginWin) openLogin(); });
+
+    // Global escape hatch to recover a minimized overlay: it has no taskbar/Dock entry to click.
+    const restoreAccelerator = process.platform === "darwin" ? "Command+Shift+T" : "Control+Shift+T";
+    if (!globalShortcut.register(restoreAccelerator, restoreExistingWindow)) {
+      logger.warn(`Could not register the ${restoreAccelerator} restore shortcut (already in use).`);
     }
-    return false;
   });
 
-  try {
-    await ensureBackend();
-  } catch (e) {
-    dialog.showErrorBox("Cannot connect to TechPrep", e.message);
-    app.quit();
-    return;
-  }
-  openLogin();
-  app.on("activate", () => { if (!win && !loginWin) openLogin(); });
-});
+  app.on("second-instance", () => restoreExistingWindow());
+  app.on("will-quit", () => globalShortcut.unregisterAll());
+}
 
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => backend?.kill());

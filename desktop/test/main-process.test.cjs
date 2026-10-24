@@ -20,6 +20,7 @@ async function boot({
   healthBody = { status: "ok", service: "api-fastapi" },
   sources = [{ id: "screen:0" }],
   sourceError,
+  singleInstanceLock = true,
 } = {}) {
   const handlers = new Map();
   const windows = [];
@@ -30,6 +31,12 @@ async function boot({
   app.quit = () => { app.didQuit = true; };
   app.getPath = () => fs.mkdtempSync(path.join(require("node:os").tmpdir(), "techprep-test-"));
   app.getVersion = () => "0.0.0-test";
+  app.requestSingleInstanceLock = () => singleInstanceLock;
+  const shortcuts = new Map();
+  const globalShortcut = {
+    register: (accelerator, callback) => { shortcuts.set(accelerator, callback); return true; },
+    unregisterAll: () => shortcuts.clear(),
+  };
   const errors = [];
   const healthRequests = [];
   const permissions = {};
@@ -46,6 +53,10 @@ async function boot({
     setAlwaysOnTop() {}
     setSkipTaskbar(value) { this.skipTaskbarCalls ??= []; this.skipTaskbarCalls.push(value); }
     isDestroyed() { return false; }
+    isMinimized() { return !!this.minimized; }
+    minimize() { this.minimized = true; }
+    restore() { this.minimized = false; }
+    focus() { this.focused = true; }
     loadURL(url) { this.url = url; return Promise.resolve(); }
     show() { this.shown = true; }
     close() { this.closedByApp = true; this.emit("closed"); }
@@ -68,6 +79,7 @@ async function boot({
       if (healthError) throw healthError;
       return { status: healthStatus, json: async () => healthBody };
     } },
+    globalShortcut,
   };
   vm.runInNewContext(fs.readFileSync(mainPath, "utf8"), {
     require(name) {
@@ -81,7 +93,7 @@ async function boot({
     __dirname: path.dirname(mainPath), console, setTimeout, URL, AbortSignal,
   });
   await new Promise(setImmediate);
-  return { app, handlers, windows, errors, healthRequests, permissions };
+  return { app, handlers, windows, errors, healthRequests, permissions, shortcuts };
 }
 
 test("remote HTTPS checks the configured server using Chromium certificate trust", async () => {
@@ -250,6 +262,35 @@ test("capture IPC rejects other windows, subframes and non-boolean requests", as
   }
   assert.throws(() => handlers.get("set-content-protection")(sender(window), "true"), /boolean/);
   assert.throws(() => handlers.get("initialize-content-protection")(sender(window), null), /boolean/);
+});
+
+test("a second launch attempt quits instead of starting a competing session", async () => {
+  const { app, windows } = await boot({ singleInstanceLock: false });
+  assert.equal(app.didQuit, true);
+  assert.equal(windows.length, 0);
+});
+
+test("relaunching while minimized restores the existing window instead of opening a second one", async () => {
+  const boot1 = await boot();
+  const overlay = signIn(boot1);
+  overlay.minimize();
+  assert.equal(overlay.isMinimized(), true);
+  boot1.app.emit("second-instance");
+  assert.equal(overlay.isMinimized(), false);
+  assert.equal(overlay.shown, true);
+  assert.equal(overlay.focused, true);
+});
+
+test("a global shortcut restores a minimized overlay with no taskbar/Dock entry to click", async () => {
+  const boot1 = await boot();
+  const overlay = signIn(boot1);
+  overlay.minimize();
+  const restore = boot1.shortcuts.get("Control+Shift+T");
+  assert.equal(typeof restore, "function");
+  restore();
+  assert.equal(overlay.isMinimized(), false);
+  assert.equal(overlay.shown, true);
+  assert.equal(overlay.focused, true);
 });
 
 test("preload retains existing controls and exposes narrow capture IPC methods", async () => {
