@@ -20,6 +20,27 @@ const desktop = window.desktop; // exposed by the Electron preload script
 // On Linux the desktop app records its default input, which it routes to the PulseAudio monitor (system audio).
 const useDeviceInput = desktop?.platform === "linux";
 
+// Short acknowledgements that shouldn't trigger an auto-answer on their own (e.g. a stray "Thank you.").
+const FILLER_WORDS = new Set([
+  "thanks", "thank", "you", "ok", "okay", "yes", "no", "yeah", "yep",
+  "sure", "alright", "cool", "right", "got", "it", "mm", "uh", "um", "hmm",
+]);
+
+// Whisper-family STT models fabricate these stock phrases (from their training captions) when fed
+// near-silent/background-noise audio with no real speech. Nobody said them — drop them outright so
+// they never pollute the transcript or trigger a spurious auto-answer.
+const HALLUCINATED_PHRASES = new Set([
+  "thank you", "thank you.", "thanks for watching", "thanks for watching.",
+  "thank you for watching", "thank you for watching.", "please subscribe", "please subscribe.",
+  "bye", "bye.", "bye-bye", "bye-bye.", "see you next time", "see you next time.",
+  "i'll see you next time", "i'll see you next time.", "you", "you.",
+]);
+
+function isHallucinatedChunk(text) {
+  const normalized = text.trim().toLowerCase().replace(/^[.!?\s]+|[.!?\s]+$/g, "");
+  return HALLUCINATED_PHRASES.has(normalized) || HALLUCINATED_PHRASES.has(normalized + ".");
+}
+
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
 const hasAvailableCall = (subscription) =>
   subscription?.status === "active" &&
@@ -165,7 +186,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       if (epoch !== transcriptEpochRef.current) return;
       try {
         const text = await transcribeAudio(API, blob, fetch, localStorage, notifyExpired);
-        if (epoch === transcriptEpochRef.current && text.trim()) {
+        if (epoch === transcriptEpochRef.current && text.trim() && !isHallucinatedChunk(text)) {
           transcriptRef.current = (transcriptRef.current + " " + text.trim()).slice(-20000);
           setTranscript(transcriptRef.current);
           if (streamRef.current) setStatus("Listening…");
@@ -192,6 +213,11 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     setTranscript("");
   }
 
+  function isFillerOnly(text) {
+    const words = text.toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
+    return words.length > 0 && words.every((word) => FILLER_WORDS.has(word));
+  }
+
   function tryAutoAnswer() {
     const pending = autoAnswerPendingRef.current;
     if (!pending || busyRef.current) return;
@@ -208,6 +234,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     autoAnswerPendingRef.current = null;
     if (!newSpeech) return;
     lastAnsweredRef.current = fullTranscript;
+    if (isFillerOnly(newSpeech)) return;
     setStatus("Answering after the speech pause…");
     getAnswer(newSpeech);
   }

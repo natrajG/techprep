@@ -10,7 +10,7 @@ export function startChunkRecorder({
   stream, analyser, onChunk, onSilence, onError,
   onActivity = () => {}, onPause = () => {},
   onCycleStart = () => undefined,
-  chunkMs = 6000, silencePeak = 0.001, pauseMs = 1800,
+  chunkMs = 6000, silencePeak = 0.003, pauseMs = 1800,
   Recorder = MediaRecorder,
   schedule = setTimeout, cancel = clearTimeout,
   repeat = setInterval, cancelRepeat = clearInterval,
