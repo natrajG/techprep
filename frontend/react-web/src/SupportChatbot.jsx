@@ -50,6 +50,17 @@ const FAQ = [
       "your background and the specific role, so responses sound natural and relevant to you.",
   },
   {
+    keywords: [
+      "dropped", "drop", "disconnect", "disconnected", "lost connection", "cut off", "call ended",
+      "rejoin", "reconnect", "call fail", "call failed", "call closed",
+    ],
+    answer:
+      "No need to buy again. On the ₹199 Hourly Call plan, your 60-minute window starts the moment your call first " +
+      "begins — if it drops or disconnects, just reconnect and resume within that same 60 minutes at no extra charge. " +
+      "You'd only need to purchase a new session if you reconnect after the full 60-minute window from the original " +
+      "start has expired. The same applies to each call on the ₹1,999 Monthly plan.",
+  },
+  {
     keywords: ["price", "pricing", "cost", "plan", "subscription", "rupee", "₹", "inr", "plans available"],
     answer:
       "We have two plans:\n" +
