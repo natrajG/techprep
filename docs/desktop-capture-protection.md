@@ -392,7 +392,7 @@ PowerShell from the project root:
 ```powershell
 npm --prefix desktop ci
 npm --prefix desktop test
-$env:TECHPREP_SERVER_URL = "https://13-201-213-33.sslip.io/"
+$env:TECHPREP_SERVER_URL = "https://interviewassistant.in/"
 npm --prefix desktop run store:win
 ```
 
@@ -436,7 +436,7 @@ builds the distributable installer. It refuses to run unless all of these hold:
 
 - It runs **on Windows** (signing and verification use Windows tools).
 - `TECHPREP_SERVER_URL` is a public DNS HTTPS root (no IP, LAN name, custom port, or path),
-  e.g. `https://techprep.duckdns.org/`. The installer embeds it; users need no configuration
+  e.g. `https://interviewassistant.in/`. The installer embeds it; users need no configuration
   and no certificate import.
 - `TECHPREP_SIGNER_SHA1` is the SHA-1 thumbprint of your code-signing certificate.
 

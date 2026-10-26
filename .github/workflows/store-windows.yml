@@ -19,7 +19,7 @@ jobs:
       - run: npm --prefix desktop test
       - run: npm --prefix desktop run store:win
         env:
-          TECHPREP_SERVER_URL: https://13-201-213-33.sslip.io/
+          TECHPREP_SERVER_URL: https://interviewassistant.in/
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
