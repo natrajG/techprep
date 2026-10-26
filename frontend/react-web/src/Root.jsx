@@ -3,6 +3,7 @@ import App from "./App";
 import Landing from "./Landing";
 import Login from "./Login";
 import SubscriptionPricing from "./SubscriptionPricing";
+import SupportChatbot from "./SupportChatbot";
 import WebDashboard from "./WebDashboard";
 import {
   checkSession, clearToken, loadConfig, login, readResetToken, requestPasswordReset, resetPassword, signup,
@@ -156,6 +157,7 @@ export default function Root() {
               }}
             />
           )}
+          <SupportChatbot />
         </>
       );
     }
@@ -197,6 +199,7 @@ export default function Root() {
           localNetwork={config.local_network}
           onRefreshSubscription={() => setReload((n) => n + 1)}
         />
+        <SupportChatbot />
       </>
     );
   }
