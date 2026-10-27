@@ -38,6 +38,15 @@ PLANS = {
     },
 }
 CALL_SECONDS = 3600
+# A one-time, non-purchasable trial granted automatically on signup so new users can see the
+# interviewer-hidden window in action before paying. Not part of PLANS/get_plan since it's never
+# sold or renewed through the normal checkout flow.
+FREE_TRIAL_PLAN_ID = "free_trial"
+FREE_TRIAL_NAME = "Trial"
+FREE_TRIAL_MINUTES = 6
+# Plans that grant a single call whose window is tracked via subscriptions.valid_until
+# (as opposed to "monthly", whose calls are tracked in the call_sessions table).
+SINGLE_CALL_PLANS = ("hourly_call", FREE_TRIAL_PLAN_ID)
 # Grace window: the client is expected to send a heartbeat roughly every 20s while a call is
 # active. A gap bigger than this means the user was genuinely disconnected (power cut, network
 # drop, app crash) and the excess time is refunded to their call window on reconnect.
@@ -267,8 +276,27 @@ def get_active_subscription(username: str) -> dict[str, Any] | None:
         "calls_used": calls_used,
         "calls_remaining": max(0, calls_total - calls_used) if calls_total is not None else None,
         "call_time_remaining_seconds": call_time_remaining,
-        "call_duration_minutes": (duration_minutes or 60) if plan_id == "hourly_call" else 60,
+        "call_duration_minutes": (duration_minutes or 60) if plan_id in SINGLE_CALL_PLANS else 60,
     }
+
+
+def grant_free_trial(username: str) -> bool:
+    """Grant a one-time 6-minute free call right after signup, so new users can see the
+    interviewer-hidden window in action before paying. Only granted if this account has never
+    had any subscription before (including a prior trial). Returns True if granted."""
+    now = int(time.time())
+    with get_db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        (count,) = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE username = ?", (username,)).fetchone()
+        if count:
+            return False
+        conn.execute(
+            """INSERT INTO subscriptions
+               (username, plan_id, plan_name, amount, status, created_at, session_start, valid_until, duration_minutes)
+               VALUES (?, ?, ?, 0, 'active', ?, NULL, NULL, ?)""",
+            (username, FREE_TRIAL_PLAN_ID, FREE_TRIAL_NAME, now, FREE_TRIAL_MINUTES),
+        )
+    return True
 
 
 def activate_call_session_if_needed(username: str) -> None:
@@ -287,7 +315,7 @@ def activate_call_session_if_needed(username: str) -> None:
         if not row:
             return
         sub_id, plan_id, session_start, valid_until, duration_minutes = row
-        if plan_id == "hourly_call" and not session_start:
+        if plan_id in SINGLE_CALL_PLANS and not session_start:
             call_end = now + (duration_minutes or 60) * 60
             conn.execute(
                 "UPDATE subscriptions SET session_start = ?, valid_until = ? WHERE id = ?",
@@ -342,7 +370,7 @@ def call_window_active(sub: dict[str, Any] | None) -> bool:
     """True when this request needs no write: there is no plan, or its call window is already open."""
     if not sub:
         return True
-    if sub["plan_id"] == "hourly_call":
+    if sub["plan_id"] in SINGLE_CALL_PLANS:
         return bool(sub["session_start"])
     if sub["plan_id"] == "monthly":
         return sub["call_time_remaining_seconds"] > 0
@@ -354,7 +382,7 @@ def start_ai_call(user: str, sub: dict[str, Any] | None = None) -> None:
     sub = sub if sub is not None else get_active_subscription(user)
     if call_window_active(sub):
         return
-    if sub["plan_id"] == "hourly_call":
+    if sub["plan_id"] in SINGLE_CALL_PLANS:
         activate_call_session_if_needed(user)
     elif sub["plan_id"] == "monthly":
         activate_monthly_call_if_needed(sub["id"])
@@ -450,7 +478,7 @@ def subscription_heartbeat(user: str = Depends(require_auth)) -> dict:
         gap = (now - last_heartbeat_at) if last_heartbeat_at else 0
         if gap > HEARTBEAT_GRACE_SECONDS:
             extended = min(gap - HEARTBEAT_GRACE_SECONDS, MAX_PAUSE_EXTENSION_SECONDS)
-        if extended and plan_id == "hourly_call" and session_start and valid_until:
+        if extended and plan_id in SINGLE_CALL_PLANS and session_start and valid_until:
             conn.execute("UPDATE subscriptions SET valid_until = valid_until + ? WHERE id = ?", (extended, sub_id))
         elif extended and plan_id == "monthly":
             cs = conn.execute(

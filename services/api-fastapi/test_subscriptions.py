@@ -1,3 +1,4 @@
+import os
 import unittest
 import tempfile
 import hashlib
@@ -423,6 +424,37 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             after = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
             self.assertGreater(after["valid_until"], before["valid_until"])
             self.assertAlmostEqual(after["valid_until"] - before["valid_until"], extended, delta=1)
+
+    async def test_signup_grants_a_one_time_six_minute_free_trial(self):
+        with patch.dict(os.environ, {"APP_ENV": "development", "ALLOW_SIGNUP": "true"}):
+            signup = await self.client.post(
+                "/api/v1/signup",
+                json={"username": "new_trial_user", "password": "a-valid-password", "email": "trial@example.com"},
+            )
+        self.assertEqual(signup.status_code, 200)
+        headers = {"Authorization": f"Bearer {signup.json()['token']}"}
+
+        status = await self.client.get("/api/v1/subscription/status", headers=headers)
+        sub = status.json()["subscription"]
+        self.assertEqual(sub["plan_id"], "free_trial")
+        self.assertEqual(sub["plan_name"], "Trial")
+        self.assertEqual(sub["amount"], 0)
+        self.assertEqual(sub["calls_total"], 1)
+        self.assertIsNone(sub["session_start"])
+
+        with patch.dict("os.environ", {"ENFORCE_SUBSCRIPTIONS": "true"}):
+            with patch.object(llm, "transcribe", AsyncMock(return_value="")):
+                response = await self.client.post(
+                    "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=headers
+                )
+            self.assertEqual(response.status_code, 200)
+            status = (await self.client.get("/api/v1/subscription/status", headers=headers)).json()["subscription"]
+            self.assertAlmostEqual(status["call_time_remaining_seconds"], 6 * 60, delta=2)
+            self.assertEqual(status["calls_remaining"], 0)
+
+        # A second signup-like grant attempt (e.g. re-registering) must not grant another trial.
+        granted_again = subscriptions.grant_free_trial("new_trial_user")
+        self.assertFalse(granted_again)
 
     async def test_hourly_plan_still_has_single_call(self):
         order = await self.client.post(

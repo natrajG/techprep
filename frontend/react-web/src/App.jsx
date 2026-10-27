@@ -42,6 +42,9 @@ function isHallucinatedChunk(text) {
 }
 
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
+// Plans that grant a single call window tracked via call_time_remaining_seconds: the hourly
+// paid plan and the free trial granted automatically at signup.
+const SINGLE_CALL_PLANS = ["hourly_call", "free_trial"];
 const hasAvailableCall = (subscription) =>
   subscription?.status === "active" &&
   (subscription.calls_remaining === null || subscription.calls_remaining > 0 ||
@@ -121,10 +124,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     if (wasListening.current && !listening) refreshSubscription();
     wasListening.current = listening;
   }, [listening, refreshSubscription]);
-  // Poll while an hourly call window is running so the "time left" warning appears
-  // even during one long continuous listening session, not just between calls.
+  // Poll while a single-call window (hourly plan or free trial) is running so the "time left"
+  // warning appears even during one long continuous listening session, not just between calls.
   useEffect(() => {
-    if (subscription?.plan_id !== "hourly_call" || !Number.isFinite(subscription?.call_time_remaining_seconds)) return;
+    if (!SINGLE_CALL_PLANS.includes(subscription?.plan_id) || !Number.isFinite(subscription?.call_time_remaining_seconds)) return;
     const id = setInterval(refreshSubscription, 30000);
     return () => clearInterval(id);
   }, [subscription?.plan_id, subscription?.call_time_remaining_seconds, refreshSubscription]);
@@ -134,7 +137,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   // window so a disconnect doesn't eat into paid call time.
   const callWindowRunning =
     subscription?.status === "active" &&
-    ((subscription.plan_id === "hourly_call" && subscription.session_start) ||
+    ((SINGLE_CALL_PLANS.includes(subscription.plan_id) && subscription.session_start) ||
       (subscription.plan_id === "monthly" && subscription.call_time_remaining_seconds > 0));
   useEffect(() => {
     if (!callWindowRunning) return;

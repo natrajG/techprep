@@ -182,6 +182,10 @@ async def signup(req: SignupRequest, request: Request) -> dict:
     reserved = auth.configured() and req.username.lower() == os.environ["APP_USERNAME"].lower()
     if reserved or not await users.in_hash_pool(users.create_user, req.username, req.password, email):
         raise HTTPException(409, "That username or email is already registered")
+    try:
+        await run_in_threadpool(subscriptions.grant_free_trial, req.username)
+    except Exception:
+        logger.exception("Could not grant free trial")
     return {"token": await new_session_token(req.username, request), "user": req.username}
 
 
