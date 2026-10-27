@@ -389,6 +389,41 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             "prompt_tokens": 18, "completion_tokens": 5, "total_tokens": 23,
         })
 
+    async def test_heartbeat_refunds_disconnect_time_to_hourly_call(self):
+        order = await self.client.post(
+            "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
+        )
+        await self.client.post(
+            "/api/v1/subscription/verify",
+            json={"order_id": order.json()["order_id"], "utr_ref": "123456789009"}, headers=self.headers,
+        )
+        with patch.dict("os.environ", {"ENFORCE_SUBSCRIPTIONS": "true"}):
+            with patch.object(llm, "transcribe", AsyncMock(return_value="")):
+                await self.client.post(
+                    "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers
+                )
+            before = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
+            self.assertIsNotNone(before["session_start"])
+
+            # First heartbeat establishes the baseline; no gap yet, so nothing is extended.
+            first_beat = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+            self.assertEqual(first_beat.json()["extended_seconds"], 0)
+
+            # Simulate a disconnect: push last_heartbeat_at back in time.
+            with subscriptions.get_db() as conn:
+                conn.execute(
+                    "UPDATE subscriptions SET last_heartbeat_at = last_heartbeat_at - 300 WHERE username = ?",
+                    (self.username,),
+                )
+
+            second_beat = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+            extended = second_beat.json()["extended_seconds"]
+            self.assertGreater(extended, 0)
+
+            after = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
+            self.assertGreater(after["valid_until"], before["valid_until"])
+            self.assertAlmostEqual(after["valid_until"] - before["valid_until"], extended, delta=1)
+
     async def test_hourly_plan_still_has_single_call(self):
         order = await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers

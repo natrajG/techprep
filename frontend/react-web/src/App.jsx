@@ -8,7 +8,7 @@ import { transcribeAudio } from "./transcription.mjs";
 import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
 import { clampHudOpacity, MIN_HUD_OPACITY } from "./hud-opacity.mjs";
-import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning } from "./subscriptions.mjs";
+import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning, sendHeartbeat } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
 import "./overlay.css";
@@ -120,6 +120,27 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     const id = setInterval(refreshSubscription, 30000);
     return () => clearInterval(id);
   }, [subscription?.plan_id, subscription?.call_time_remaining_seconds, refreshSubscription]);
+
+  // Send a periodic heartbeat while a call window is running. If the gap between heartbeats is
+  // larger than expected (app lost power/network), the server refunds that gap to the call
+  // window so a disconnect doesn't eat into paid call time.
+  const callWindowRunning =
+    subscription?.status === "active" &&
+    ((subscription.plan_id === "hourly_call" && subscription.session_start) ||
+      (subscription.plan_id === "monthly" && subscription.call_time_remaining_seconds > 0));
+  useEffect(() => {
+    if (!callWindowRunning) return;
+    const beat = () => sendHeartbeat(API, fetch, localStorage, notifyExpired);
+    beat();
+    const id = setInterval(beat, 15000);
+    // Also beat immediately when the browser/app regains connectivity, so a reconnect is
+    // detected as soon as possible rather than waiting for the next interval tick.
+    window.addEventListener("online", beat);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("online", beat);
+    };
+  }, [callWindowRunning]);
 
   function openProfile() {
     setShowProfileModal(true);

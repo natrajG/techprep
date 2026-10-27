@@ -38,6 +38,13 @@ PLANS = {
     },
 }
 CALL_SECONDS = 3600
+# Grace window: the client is expected to send a heartbeat roughly every 20s while a call is
+# active. A gap bigger than this means the user was genuinely disconnected (power cut, network
+# drop, app crash) and the excess time is refunded to their call window on reconnect.
+HEARTBEAT_GRACE_SECONDS = 45
+# Cap how much a single disconnect can extend a call window by, so a laptop left asleep/closed
+# for days can't silently grant unlimited call time.
+MAX_PAUSE_EXTENSION_SECONDS = 6 * 3600
 TEST_PAYMENT_USER = "testuser_win"
 RAZORPAY_API = "https://api.razorpay.com/v1"
 # Flat payment gateway processing fee passed on to the customer for real Razorpay payments.
@@ -105,7 +112,8 @@ def _subscription_schema(conn) -> None:
         )"""
     )
     for table, columns in (
-        ("subscriptions", ("call_limit", "duration_minutes")),
+        ("subscriptions", ("call_limit", "duration_minutes", "last_heartbeat_at")),
+        ("call_sessions", ("paused_seconds",)),
         ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days",
                             "provider_order_id", "provider_payment_id")),
     ):
@@ -226,6 +234,13 @@ def get_active_subscription(username: str) -> dict[str, Any] | None:
             calls_used, last_start = conn.execute(
                 "SELECT COUNT(*), MAX(started_at) FROM call_sessions WHERE subscription_id = ?", (sub_id,)
             ).fetchone()
+            last_paused = 0
+            if last_start is not None:
+                paused_row = conn.execute(
+                    "SELECT paused_seconds FROM call_sessions WHERE subscription_id = ? AND started_at = ? ORDER BY id DESC LIMIT 1",
+                    (sub_id, last_start),
+                ).fetchone()
+                last_paused = (paused_row[0] or 0) if paused_row else 0
     if row is None:
         _expire_subscription(sub_id, now)
         return None
@@ -233,7 +248,7 @@ def get_active_subscription(username: str) -> dict[str, Any] | None:
     time_remaining = (valid_until - now) if valid_until else None
     if plan_id == "monthly":
         calls_total = call_limit
-        call_time_remaining = max(0, last_start + CALL_SECONDS - now) if last_start is not None else 0
+        call_time_remaining = max(0, last_start + CALL_SECONDS + last_paused - now) if last_start is not None else 0
     else:
         calls_used = 1 if session_start else 0
         calls_total = 1
@@ -287,11 +302,14 @@ def activate_monthly_call_if_needed(subscription_id: int) -> None:
         (call_limit,) = conn.execute(
             "SELECT call_limit FROM subscriptions WHERE id = ?", (subscription_id,)
         ).fetchone()
-        calls_used, last_start = conn.execute(
-            "SELECT COUNT(*), MAX(started_at) FROM call_sessions WHERE subscription_id = ?",
-            (subscription_id,),
+        calls_used, last_start, last_paused = conn.execute(
+            """SELECT COUNT(*), MAX(started_at),
+                      (SELECT paused_seconds FROM call_sessions
+                       WHERE subscription_id = ? ORDER BY id DESC LIMIT 1)
+               FROM call_sessions WHERE subscription_id = ?""",
+            (subscription_id, subscription_id),
         ).fetchone()
-        if last_start is not None and last_start + CALL_SECONDS > now:
+        if last_start is not None and last_start + CALL_SECONDS + (last_paused or 0) > now:
             return
         if call_limit is not None and calls_used >= call_limit:
             raise HTTPException(402, f"Monthly subscription's {call_limit} one-hour calls have been used. Renew to continue.")
@@ -410,6 +428,42 @@ def subscription_status(user: str = Depends(require_auth)) -> dict:
     if not sub:
         return {"has_active": False, "subscription": None, "token_usage": users.get_token_usage(user)}
     return {"has_active": True, "subscription": sub, "token_usage": users.get_token_usage(user)}
+
+
+@router.post("/heartbeat")
+def subscription_heartbeat(user: str = Depends(require_auth)) -> dict:
+    """Called periodically by the client while a call is active. If the gap since the last
+    heartbeat is bigger than the expected interval, the user was disconnected (power cut,
+    network drop, app crash) and that gap is refunded to their current call window."""
+    now = int(time.time())
+    extended = 0
+    with get_db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT id, plan_id, session_start, valid_until, last_heartbeat_at
+               FROM subscriptions WHERE username = ? AND status = 'active' ORDER BY id DESC LIMIT 1""",
+            (user,),
+        ).fetchone()
+        if not row:
+            return {"ok": True, "extended_seconds": 0}
+        sub_id, plan_id, session_start, valid_until, last_heartbeat_at = row
+        gap = (now - last_heartbeat_at) if last_heartbeat_at else 0
+        if gap > HEARTBEAT_GRACE_SECONDS:
+            extended = min(gap - HEARTBEAT_GRACE_SECONDS, MAX_PAUSE_EXTENSION_SECONDS)
+        if extended and plan_id == "hourly_call" and session_start and valid_until:
+            conn.execute("UPDATE subscriptions SET valid_until = valid_until + ? WHERE id = ?", (extended, sub_id))
+        elif extended and plan_id == "monthly":
+            cs = conn.execute(
+                "SELECT id, started_at FROM call_sessions WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
+                (sub_id,),
+            ).fetchone()
+            if cs and cs[1] + CALL_SECONDS > now:
+                conn.execute(
+                    "UPDATE call_sessions SET paused_seconds = COALESCE(paused_seconds, 0) + ? WHERE id = ?",
+                    (extended, cs[0]),
+                )
+        conn.execute("UPDATE subscriptions SET last_heartbeat_at = ? WHERE id = ?", (now, sub_id))
+    return {"ok": True, "extended_seconds": extended}
 
 
 @router.post("/create-order")

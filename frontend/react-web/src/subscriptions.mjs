@@ -83,6 +83,17 @@ export async function uploadCustomQr(api, file, fetchImpl = fetch, storage = loc
   return res.json();
 }
 
+export async function sendHeartbeat(api, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+  try {
+    const res = await authFetch(`${api}/api/v1/subscription/heartbeat`, { method: "POST" }, fetchImpl, storage, onExpired);
+    return res.ok ? res.json() : null;
+  } catch {
+    // A failed heartbeat (offline) is expected during a disconnect; the next successful one
+    // will detect the gap and refund the paused time.
+    return null;
+  }
+}
+
 // Warns when 10% or less of a multi-call plan's calls are left. A plan with one call never warns.
 export function lowCallWarning(subscription) {
   if (subscription?.status !== "active") return null;
