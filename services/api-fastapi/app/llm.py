@@ -14,9 +14,19 @@ STT_PROMPT = (
 # gpt-oss models spend hidden "reasoning" tokens, which slows answers and burns provider rate limits.
 REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "low" if "gpt-oss" in MODEL else "")
 
+# Reasoning-style models (o-series, gpt-5+, gpt-6+) reject any temperature other than the
+# default (1) and error out with a 400 if one is supplied.
+_NO_CUSTOM_TEMPERATURE_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
+
 
 def _reasoning() -> dict:
     return {"reasoning_effort": REASONING_EFFORT} if REASONING_EFFORT else {}
+
+
+def _temperature(value: float) -> dict:
+    if MODEL.startswith(_NO_CUSTOM_TEMPERATURE_PREFIXES):
+        return {}
+    return {"temperature": value}
 
 _client: AsyncOpenAI | None = None
 
@@ -49,7 +59,7 @@ async def stream_chat(
         model=MODEL,
         stream=True,
         stream_options={"include_usage": True},
-        temperature=0.4,
+        **_temperature(0.4),
         **_reasoning(),
         messages=[{"role": "system", "content": system}, *(history or []), {"role": "user", "content": user}],
     )
@@ -66,7 +76,7 @@ async def complete(prompt: str, json_mode: bool = False, on_usage: UsageRecorder
     extra = {"response_format": {"type": "json_object"}} if json_mode else {}
     resp = await c.chat.completions.create(
         model=MODEL,
-        temperature=0,
+        **_temperature(0),
         **_reasoning(),
         messages=[{"role": "user", "content": prompt}],
         **extra,
