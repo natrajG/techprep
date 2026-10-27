@@ -3,13 +3,42 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
+import httpx
+
+RESEND_API = "https://api.resend.com/emails"
+
 
 def configured() -> bool:
-    return bool(os.getenv("SMTP_HOST") and os.getenv("MAIL_FROM"))
+    return bool(os.getenv("RESEND_API_KEY") and os.getenv("MAIL_FROM")) or bool(
+        os.getenv("SMTP_HOST") and os.getenv("MAIL_FROM")
+    )
 
 
 def send(to: str, subject: str, body: str) -> None:
-    """Sends through any SMTP service (AWS SES SMTP, Gmail, Mailgun and others)."""
+    """Sends via Resend's HTTP API if RESEND_API_KEY is set, otherwise falls back to SMTP
+    (AWS SES SMTP, Gmail, Mailgun and others)."""
+    if os.getenv("RESEND_API_KEY"):
+        _send_via_resend(to, subject, body)
+    else:
+        _send_via_smtp(to, subject, body)
+
+
+def _send_via_resend(to: str, subject: str, body: str) -> None:
+    response = httpx.post(
+        RESEND_API,
+        headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"},
+        json={
+            "from": os.environ["MAIL_FROM"],
+            "to": [to],
+            "subject": subject,
+            "text": body,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+
+
+def _send_via_smtp(to: str, subject: str, body: str) -> None:
     message = EmailMessage()
     message["From"] = os.environ["MAIL_FROM"]
     message["To"] = to
