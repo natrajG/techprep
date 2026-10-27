@@ -43,7 +43,7 @@ CALL_SECONDS = 3600
 # sold or renewed through the normal checkout flow.
 FREE_TRIAL_PLAN_ID = "free_trial"
 FREE_TRIAL_NAME = "Trial"
-FREE_TRIAL_MINUTES = 6
+FREE_TRIAL_MINUTES = 10
 # Plans that grant a single call whose window is tracked via subscriptions.valid_until
 # (as opposed to "monthly", whose calls are tracked in the call_sessions table).
 SINGLE_CALL_PLANS = ("hourly_call", FREE_TRIAL_PLAN_ID)
@@ -281,7 +281,7 @@ def get_active_subscription(username: str) -> dict[str, Any] | None:
 
 
 def grant_free_trial(username: str) -> bool:
-    """Grant a one-time 6-minute free call right after signup, so new users can see the
+    """Grant a one-time, free-trial-duration call right after signup, so new users can see the
     interviewer-hidden window in action before paying. Only granted if this account has never
     had any subscription before (including a prior trial). Returns True if granted."""
     now = int(time.time())

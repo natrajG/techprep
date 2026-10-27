@@ -425,7 +425,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(after["valid_until"], before["valid_until"])
             self.assertAlmostEqual(after["valid_until"] - before["valid_until"], extended, delta=1)
 
-    async def test_signup_grants_a_one_time_six_minute_free_trial(self):
+    async def test_signup_grants_a_one_time_free_trial(self):
         with patch.dict(os.environ, {"APP_ENV": "development", "ALLOW_SIGNUP": "true"}):
             signup = await self.client.post(
                 "/api/v1/signup",
@@ -449,7 +449,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                 )
             self.assertEqual(response.status_code, 200)
             status = (await self.client.get("/api/v1/subscription/status", headers=headers)).json()["subscription"]
-            self.assertAlmostEqual(status["call_time_remaining_seconds"], 6 * 60, delta=2)
+            self.assertAlmostEqual(status["call_time_remaining_seconds"], subscriptions.FREE_TRIAL_MINUTES * 60, delta=2)
             self.assertEqual(status["calls_remaining"], 0)
 
         # A second signup-like grant attempt (e.g. re-registering) must not grant another trial.
