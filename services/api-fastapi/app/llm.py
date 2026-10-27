@@ -11,8 +11,12 @@ STT_PROMPT = (
     "Technical interview terminology: Django, Python, REST API, React, JavaScript, "
     "TypeScript, SQL, PostgreSQL, Docker, Kubernetes, AWS, and cloud infrastructure."
 )
-# gpt-oss models spend hidden "reasoning" tokens, which slows answers and burns provider rate limits.
-REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "low" if "gpt-oss" in MODEL else "")
+# gpt-oss and gpt-5/6/o-series reasoning models spend hidden "reasoning" tokens, which slows
+# down answers (and burns provider rate limits), so default them to "low" effort for latency.
+REASONING_EFFORT = os.getenv(
+    "LLM_REASONING_EFFORT",
+    "low" if "gpt-oss" in MODEL or MODEL.startswith(("o1", "o3", "o4", "gpt-5", "gpt-6")) else "",
+)
 
 # Reasoning-style models (o-series, gpt-5+, gpt-6+) reject any temperature other than the
 # default (1) and error out with a 400 if one is supplied.
@@ -89,9 +93,15 @@ async def transcribe(filename: str, data: bytes) -> str:
     c = client()
     if c is None:
         return ""
-    # Force English-only transcription: avoids Whisper mis-detecting/mixing other spoken languages
+    # Force English-only transcription: avoids mis-detecting/mixing other spoken languages
     # picked up from background noise, and improves speed/accuracy for English interviews.
+    # gpt-transcribe (and other newer transcription models) use the plural "languages" field
+    # instead of the legacy singular "language" field used by whisper-1; sending both is
+    # rejected, and silently sending only "language" to gpt-transcribe is ignored.
+    language_kwargs = (
+        {"extra_body": {"languages": ["en"]}} if STT_MODEL != "whisper-1" else {"language": "en"}
+    )
     result = await c.audio.transcriptions.create(
-        model=STT_MODEL, file=(filename, data), language="en", prompt=STT_PROMPT,
+        model=STT_MODEL, file=(filename, data), prompt=STT_PROMPT, **language_kwargs,
     )
     return result.text

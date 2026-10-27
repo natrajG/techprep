@@ -81,3 +81,16 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         kwargs = provider.audio.transcriptions.create.call_args.kwargs
         self.assertEqual(kwargs["language"], "en")
         self.assertIn("Django", kwargs["prompt"])
+
+    async def test_transcription_uses_languages_field_for_gpt_transcribe(self):
+        provider = AsyncMock()
+        provider.audio.transcriptions.create.return_value.text = "Django work"
+        with patch.object(llm, "client", return_value=provider), patch.object(llm, "STT_MODEL", "gpt-transcribe"):
+            text = await llm.transcribe("chunk.webm", b"audio")
+        self.assertEqual(text, "Django work")
+        kwargs = provider.audio.transcriptions.create.call_args.kwargs
+        # gpt-transcribe rejects the legacy singular "language" field and requires "languages"
+        # (plural, list) inside extra_body instead, so English-only enforcement must use that.
+        self.assertNotIn("language", kwargs)
+        self.assertEqual(kwargs["extra_body"], {"languages": ["en"]})
+        self.assertIn("Django", kwargs["prompt"])
