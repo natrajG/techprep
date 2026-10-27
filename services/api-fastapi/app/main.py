@@ -166,6 +166,12 @@ async def login(req: LoginRequest, request: Request) -> dict:
             raise HTTPException(503, "Login is not configured: set APP_USERNAME and APP_PASSWORD in .env")
         await asyncio.sleep(1)  # slows password guessing
         raise HTTPException(401, "Incorrect username or password")
+    try:
+        # Covers accounts created before the free trial existed: they never got one at signup time,
+        # so grant it the first time such an account logs in (grant_free_trial is a no-op otherwise).
+        await run_in_threadpool(subscriptions.grant_free_trial, user)
+    except Exception:
+        logger.exception("Could not grant free trial")
     return {"token": await new_session_token(user, request), "user": user}
 
 

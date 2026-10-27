@@ -456,6 +456,28 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         granted_again = subscriptions.grant_free_trial("new_trial_user")
         self.assertFalse(granted_again)
 
+    async def test_login_backfills_free_trial_for_pre_trial_accounts(self):
+        # An account created before the free trial existed has zero subscription rows; logging in
+        # should retroactively grant it the trial exactly once, without granting it again later.
+        users.create_user("legacy_user", "a-valid-password", "legacy@example.com")
+
+        login = await self.client.post(
+            "/api/v1/login", json={"username": "legacy_user", "password": "a-valid-password"}
+        )
+        self.assertEqual(login.status_code, 200)
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+        status = (await self.client.get("/api/v1/subscription/status", headers=headers)).json()
+        self.assertTrue(status["has_active"])
+        self.assertEqual(status["subscription"]["plan_id"], "free_trial")
+
+        # Logging in again must not grant a second trial.
+        login_again = await self.client.post(
+            "/api/v1/login", json={"username": "legacy_user", "password": "a-valid-password"}
+        )
+        self.assertEqual(login_again.status_code, 200)
+        granted_again = subscriptions.grant_free_trial("legacy_user")
+        self.assertFalse(granted_again)
+
     async def test_hourly_plan_still_has_single_call(self):
         order = await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
