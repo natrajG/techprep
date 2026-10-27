@@ -66,10 +66,11 @@ const FAQ = [
       "We have two plans:\n" +
       "• ₹199 — Hourly Call (pay-as-you-go, single interview)\n" +
       "• ₹1,999 — Monthly (30 one-hour calls over 30 days, best value)\n" +
+      "A flat ₹2 payment gateway fee is added at checkout (₹201 / ₹2,001 total), shown clearly before you pay.\n" +
       "Ask me \"what do I get for ₹199\" or \"what do I get for ₹1999\" for the full details of each.",
   },
   {
-    keywords: ["199", "hourly call", "hourly plan", "pay as you go", "pay-as-you-go", "single call", "per call"],
+    keywords: ["201", "199", "hourly call", "hourly plan", "pay as you go", "pay-as-you-go", "single call", "per call"],
     answer:
       "₹199 Hourly Call plan gives you:\n" +
       "• One full 60-minute live interview session with the invisible HUD overlay active.\n" +
@@ -80,7 +81,7 @@ const FAQ = [
   },
   {
     keywords: [
-      "1999", "monthly", "monthly plan", "monthly subscription", "best value", "most popular",
+      "2001", "1999", "monthly", "monthly plan", "monthly subscription", "best value", "most popular",
       "30 calls", "multiple calls", "multiple interviews",
     ],
     answer:

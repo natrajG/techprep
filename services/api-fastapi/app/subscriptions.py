@@ -40,6 +40,8 @@ PLANS = {
 CALL_SECONDS = 3600
 TEST_PAYMENT_USER = "testuser_win"
 RAZORPAY_API = "https://api.razorpay.com/v1"
+# Flat payment gateway processing fee passed on to the customer for real Razorpay payments.
+PAYMENT_PROCESSING_FEE = 2
 
 # Configurable UPI Merchant VPA & Name
 DEFAULT_UPI_VPA = os.getenv("UPI_VPA", "8886164220-5@axl")
@@ -417,22 +419,25 @@ def create_payment_order(req: CreateOrderRequest, user: str = Depends(require_au
     with get_db() as conn:
         plan = get_plan(conn, req.plan_id)
     is_test = user.lower() == TEST_PAYMENT_USER
+    # Real Razorpay payments pass on a flat ₹2 gateway processing fee on top of the plan price.
+    processing_fee = 0 if is_test else PAYMENT_PROCESSING_FEE
+    charge_amount = plan["amount"] + processing_fee
     provider_order_id = None
     upi_uri = ""
     if is_test:
         upi_uri = build_upi_uri(
-            vpa=DEFAULT_UPI_VPA, payee_name=DEFAULT_UPI_NAME, amount=plan["amount"],
+            vpa=DEFAULT_UPI_VPA, payee_name=DEFAULT_UPI_NAME, amount=charge_amount,
             order_id=order_id, note=f"TechPrep {plan['name']}",
         )
     else:
         provider_order = razorpay_request(
             "POST", "/orders",
-            json={"amount": plan["amount"] * 100, "currency": "INR",
+            json={"amount": charge_amount * 100, "currency": "INR",
                   "receipt": order_id, "notes": {"plan_id": req.plan_id}},
         )
         if (not isinstance(provider_order, dict)
                 or not isinstance(provider_order.get("id"), str)
-                or provider_order.get("amount") != plan["amount"] * 100
+                or provider_order.get("amount") != charge_amount * 100
                 or provider_order.get("currency") != "INR"):
             raise HTTPException(502, "Payment provider returned an invalid order")
         provider_order_id = provider_order["id"]
@@ -442,13 +447,15 @@ def create_payment_order(req: CreateOrderRequest, user: str = Depends(require_au
                (order_id, username, plan_id, plan_name, amount, upi_uri, status, created_at,
                 call_limit, duration_minutes, duration_days, provider_order_id)
                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)""",
-            (order_id, user, plan["id"], plan["name"], plan["amount"], upi_uri, now,
+            (order_id, user, plan["id"], plan["name"], charge_amount, upi_uri, now,
              plan.get("call_limit"), plan.get("duration_minutes"), plan.get("duration_days"), provider_order_id),
         )
     return {
         "order_id": order_id,
         "plan": plan,
-        "amount": plan["amount"],
+        "amount": charge_amount,
+        "base_amount": plan["amount"],
+        "processing_fee": processing_fee,
         "payment_mode": "test_utr" if is_test else "razorpay",
         "razorpay_order_id": provider_order_id,
         "razorpay_key_id": None if is_test else razorpay_credentials()[0],

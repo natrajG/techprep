@@ -208,7 +208,12 @@ export default function SubscriptionPricing({ currentSubscription, onPaymentSucc
           order.payment_mode === "razorpay" ? (
             <div style={styles.paymentBox}>
               <div style={styles.instructionsCol}>
-                <div style={styles.amountNotice}>Pay <strong>₹{order.amount}</strong> securely with Razorpay.</div>
+              <div style={styles.amountNotice}>
+                Pay <strong>₹{order.amount}</strong> securely with Razorpay
+                {order.processing_fee ? (
+                  <> (₹{order.base_amount} plan + ₹{order.processing_fee} payment gateway fee)</>
+                ) : null}.
+              </div>
                 <button type="button" onClick={handleCheckout} disabled={verifying} style={styles.verifyBtn}>
                   {verifying ? "Verifying..." : pendingPayment ? "Retry verification" : "Pay & Activate Access"}
                 </button>
