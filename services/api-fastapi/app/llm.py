@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import AsyncIterator, Callable
 
 from openai import AsyncOpenAI
@@ -11,6 +12,10 @@ STT_PROMPT = (
     "Technical interview terminology: Django, Python, REST API, React, JavaScript, "
     "TypeScript, SQL, PostgreSQL, Docker, Kubernetes, AWS, and cloud infrastructure."
 )
+# Covers the common Indian-language scripts (Devanagari, Bengali, Gurmukhi, Gujarati, Oriya,
+# Tamil, Telugu, Kannada, Malayalam, Sinhala) that STT models occasionally slip into despite the
+# "language": "en" hint — OpenAI's own docs note that hint is not a strict guarantee.
+NON_ENGLISH_SCRIPT = re.compile(r"[\u0900-\u0D7F]")
 # gpt-oss and gpt-5/6/o-series reasoning models spend hidden "reasoning" tokens, which slows
 # down answers (and burns provider rate limits), so default them to "low" effort for latency.
 REASONING_EFFORT = os.getenv(
@@ -102,4 +107,11 @@ async def transcribe(filename: str, data: bytes) -> str:
     result = await c.audio.transcriptions.create(
         model=STT_MODEL, file=(filename, data), prompt=STT_PROMPT, language="en",
     )
-    return result.text
+    text = result.text
+    # Safety net: the "language" hint above is not a strict guarantee — some STT models still
+    # occasionally transcribe actual non-English speech in its own script. Drop such chunks
+    # entirely (treat as no speech captured) instead of translating them — only genuinely
+    # English speech should ever be captured or answered.
+    if text and NON_ENGLISH_SCRIPT.search(text):
+        return ""
+    return text

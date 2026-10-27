@@ -94,3 +94,21 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         # sending it as a request param (a prior bug) was silently ignored by the API.
         self.assertEqual(kwargs["language"], "en")
         self.assertIn("Django", kwargs["prompt"])
+
+    async def test_non_english_transcription_is_skipped_not_translated(self):
+        provider = AsyncMock()
+        # The STT model ignored the "en" hint and transcribed actual Telugu speech in its own script.
+        provider.audio.transcriptions.create.return_value.text = "డేటా బైండింగ్ అంటే ఏమిటి"
+        with patch.object(llm, "client", return_value=provider):
+            text = await llm.transcribe("chunk.webm", b"audio")
+        self.assertEqual(text, "")
+        provider.chat.completions.create.assert_not_called()
+
+    async def test_english_transcription_passes_through(self):
+        provider = AsyncMock()
+        provider.audio.transcriptions.create.return_value.text = "What is data binding"
+        with patch.object(llm, "client", return_value=provider):
+            text = await llm.transcribe("chunk.webm", b"audio")
+        self.assertEqual(text, "What is data binding")
+        provider.chat.completions.create.assert_not_called()
+
