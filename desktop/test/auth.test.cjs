@@ -55,21 +55,21 @@ test("signup stores the token, and surfaces server validation errors", async () 
   const saved = storage();
   let url;
   const ok = async (u) => { url = u; return { status: 200, ok: true, json: async () => ({ token: "n1", user: "newbie" }) }; };
-  assert.equal(await signup("", "newbie", "longenough", ok, saved), "newbie");
+  assert.equal(await signup("", "newbie", "longenough", "newbie@example.com", ok, saved), "newbie");
   assert.equal(url, "/api/v1/signup");
   assert.equal(getToken(saved), "n1");
   const other = storage();
-  await assert.rejects(signup("", "x", "y", reply(409, { detail: "That username is already taken" }), other), /already taken/);
+  await assert.rejects(signup("", "x", "y", "x@example.com", reply(409, { detail: "That username is already taken" }), other), /already taken/);
   assert.equal(getToken(other), "");
 });
 
 test("server config: production values, legacy servers, and failures", async () => {
   const { loadConfig } = await auth;
-  assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: false, minimum_password: 12, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B" })),
-    { signup_enabled: false, minimum_password: 12, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B" });
-  assert.deepEqual(await loadConfig("", reply(404)), { signup_enabled: true, minimum_password: 8, local_network: true, store_url: null });
+  assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B" })),
+    { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B" });
+  assert.deepEqual(await loadConfig("", reply(404)), { signup_enabled: true, minimum_password: 8, password_reset_enabled: false, local_network: true, store_url: null });
   assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: "yes", minimum_password: "x" })),
-    { signup_enabled: false, minimum_password: 8, local_network: false, store_url: null });
+    { signup_enabled: false, minimum_password: 8, password_reset_enabled: false, local_network: false, store_url: null });
   assert.equal((await loadConfig("", reply(200, { store_url: "javascript:alert(1)" }))).store_url, null);
   await assert.rejects(loadConfig("", reply(500)), /500/);
   await assert.rejects(loadConfig("", async () => { throw new Error("offline"); }), /offline/);
