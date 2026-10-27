@@ -8,7 +8,7 @@ import { transcribeAudio } from "./transcription.mjs";
 import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
 import { splitBold } from "./rich-text.mjs";
 import { clampHudOpacity, MIN_HUD_OPACITY } from "./hud-opacity.mjs";
-import { fetchSubscriptionStatus, lowCallWarning } from "./subscriptions.mjs";
+import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
 import "./overlay.css";
@@ -90,6 +90,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [profileError, setProfileError] = useState("");
 
   const lowCalls = lowCallWarning(subscription);
+  const timeWarning = timeRemainingWarning(subscription);
   const wasListening = useRef(false);
   const refreshSubscription = useCallback(() => {
     fetchSubscriptionStatus(API, fetch, localStorage, notifyExpired)
@@ -112,6 +113,13 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     if (wasListening.current && !listening) refreshSubscription();
     wasListening.current = listening;
   }, [listening, refreshSubscription]);
+  // Poll while an hourly call window is running so the "time left" warning appears
+  // even during one long continuous listening session, not just between calls.
+  useEffect(() => {
+    if (subscription?.plan_id !== "hourly_call" || !Number.isFinite(subscription?.call_time_remaining_seconds)) return;
+    const id = setInterval(refreshSubscription, 30000);
+    return () => clearInterval(id);
+  }, [subscription?.plan_id, subscription?.call_time_remaining_seconds, refreshSubscription]);
 
   function openProfile() {
     setShowProfileModal(true);
@@ -516,6 +524,17 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         <div className="hud-sub-low" role="status">
           <span style={{ fontSize: 13, color: "#fde68a" }}>
             ⚠️ <strong>Only {lowCalls.remaining} of {lowCalls.total} calls left.</strong> Renew soon so your next interview is not interrupted.
+          </span>
+          <button type="button" className="hud-renew-btn" onClick={handleRenewClick}>
+            Renew Plan
+          </button>
+        </div>
+      )}
+
+      {!subExpired && timeWarning && (
+        <div className="hud-sub-low" role="status">
+          <span style={{ fontSize: 13, color: "#fde68a" }}>
+            ⏳ <strong>Only {timeWarning.minutes} min{timeWarning.minutes === 1 ? "" : "s"} left in this call.</strong> Renew now to avoid losing AI answers mid-interview.
           </span>
           <button type="button" className="hud-renew-btn" onClick={handleRenewClick}>
             Renew Plan

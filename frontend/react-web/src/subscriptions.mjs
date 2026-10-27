@@ -90,3 +90,12 @@ export function lowCallWarning(subscription) {
   if (!Number.isInteger(remaining) || !Number.isInteger(total) || total < 2 || remaining < 1) return null;
   return remaining * 10 <= total ? { remaining, total } : null;
 }
+
+// Warns once an active call session has 5 minutes or less left before it expires.
+const TIME_WARNING_THRESHOLD_SECONDS = 5 * 60;
+export function timeRemainingWarning(subscription) {
+  if (subscription?.status !== "active") return null;
+  const remaining = subscription.call_time_remaining_seconds;
+  if (!Number.isFinite(remaining) || remaining <= 0 || remaining > TIME_WARNING_THRESHOLD_SECONDS) return null;
+  return { minutes: Math.max(1, Math.ceil(remaining / 60)) };
+}
