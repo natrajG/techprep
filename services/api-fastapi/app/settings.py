@@ -76,5 +76,8 @@ def validate() -> None:
         ("SMTP_PORT", 587),
     ):
         positive_integer(name, default)
-    if bool(os.getenv("SMTP_HOST")) != bool(os.getenv("MAIL_FROM")):
-        raise ValueError("Set both SMTP_HOST and MAIL_FROM to enable password reset emails.")
+    has_resend = bool(os.getenv("RESEND_API_KEY"))
+    has_smtp = bool(os.getenv("SMTP_HOST"))
+    has_mail_from = bool(os.getenv("MAIL_FROM"))
+    if (has_resend or has_smtp) != has_mail_from:
+        raise ValueError("Set MAIL_FROM together with either RESEND_API_KEY or SMTP_HOST to enable password reset emails.")
