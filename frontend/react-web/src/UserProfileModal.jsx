@@ -122,7 +122,11 @@ export default function UserProfileModal({
                         <span style={styles.usageLabel}>Call windows</span>
                         <strong style={styles.usageVal}>
                           {subscription.calls_total === null ? "Unlimited (existing plan)"
-                            : `${subscription.calls_remaining} of ${subscription.calls_total} remaining`}
+                            : subscription.calls_remaining === 0 && callMinutesLeft
+                              ? "In progress (current session)"
+                              : subscription.calls_remaining === 0
+                                ? "Used — renew to continue"
+                                : `${subscription.calls_remaining} of ${subscription.calls_total} remaining`}
                         </strong>
                         <span style={styles.usageLabel}>
                           {callMinutesLeft ? `${callMinutesLeft} mins left in current call`

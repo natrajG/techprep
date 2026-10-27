@@ -106,7 +106,11 @@ export default function WebDashboard({
                     <span style={styles.detailLabel}>Calls remaining</span>
                     <strong style={styles.detailValue}>
                       {subscription.calls_total === null ? "Unlimited (existing plan)"
-                        : `${subscription.calls_remaining} of ${subscription.calls_total}`}
+                        : subscription.calls_remaining === 0 && subscription.call_time_remaining_seconds > 0
+                          ? "In progress (current session)"
+                          : subscription.calls_remaining === 0
+                            ? "Used — renew to continue"
+                            : `${subscription.calls_remaining} of ${subscription.calls_total}`}
                     </strong>
                   </div>
                   <div style={styles.detailItem}>
