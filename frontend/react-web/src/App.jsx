@@ -106,8 +106,16 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       })
       .catch(() => {});
   }, []);
+  // Heartbeat must resolve BEFORE the status refresh: otherwise a status check that lands
+  // first (e.g. right after reopening the app post-disconnect) could see the un-extended,
+  // already-elapsed valid_until and mark the subscription expired before the heartbeat gets
+  // a chance to refund the disconnected time.
+  const checkIn = useCallback(
+    () => sendHeartbeat(API, fetch, localStorage, notifyExpired).then(refreshSubscription),
+    [refreshSubscription]
+  );
 
-  useEffect(refreshSubscription, [refreshSubscription]);
+  useEffect(checkIn, [checkIn]);
   // A call is counted when it starts, so reload the balance once the user stops listening.
   useEffect(() => {
     if (wasListening.current && !listening) refreshSubscription();
@@ -130,17 +138,16 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       (subscription.plan_id === "monthly" && subscription.call_time_remaining_seconds > 0));
   useEffect(() => {
     if (!callWindowRunning) return;
-    const beat = () => sendHeartbeat(API, fetch, localStorage, notifyExpired);
-    beat();
-    const id = setInterval(beat, 15000);
-    // Also beat immediately when the browser/app regains connectivity, so a reconnect is
-    // detected as soon as possible rather than waiting for the next interval tick.
-    window.addEventListener("online", beat);
+    const id = setInterval(checkIn, 15000);
+    // Also check in immediately when the browser/app regains connectivity, so a reconnect is
+    // detected (and any lost time refunded) as soon as possible rather than waiting for the
+    // next interval tick.
+    window.addEventListener("online", checkIn);
     return () => {
       clearInterval(id);
-      window.removeEventListener("online", beat);
+      window.removeEventListener("online", checkIn);
     };
-  }, [callWindowRunning]);
+  }, [callWindowRunning, checkIn]);
 
   function openProfile() {
     setShowProfileModal(true);
