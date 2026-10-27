@@ -82,15 +82,15 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["language"], "en")
         self.assertIn("Django", kwargs["prompt"])
 
-    async def test_transcription_uses_languages_field_for_gpt_transcribe(self):
+    async def test_transcription_forces_english_for_gpt_transcribe_too(self):
         provider = AsyncMock()
         provider.audio.transcriptions.create.return_value.text = "Django work"
         with patch.object(llm, "client", return_value=provider), patch.object(llm, "STT_MODEL", "gpt-transcribe"):
             text = await llm.transcribe("chunk.webm", b"audio")
         self.assertEqual(text, "Django work")
         kwargs = provider.audio.transcriptions.create.call_args.kwargs
-        # gpt-transcribe rejects the legacy singular "language" field and requires "languages"
-        # (plural, list) inside extra_body instead, so English-only enforcement must use that.
-        self.assertNotIn("language", kwargs)
-        self.assertEqual(kwargs["extra_body"], {"languages": ["en"]})
+        # The OpenAI API's request schema only has a single top-level "language" field for every
+        # STT model; "languages" (plural) only ever appears in gpt-transcribe's *response*, so
+        # sending it as a request param (a prior bug) was silently ignored by the API.
+        self.assertEqual(kwargs["language"], "en")
         self.assertIn("Django", kwargs["prompt"])

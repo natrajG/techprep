@@ -95,13 +95,11 @@ async def transcribe(filename: str, data: bytes) -> str:
         return ""
     # Force English-only transcription: avoids mis-detecting/mixing other spoken languages
     # picked up from background noise, and improves speed/accuracy for English interviews.
-    # gpt-transcribe (and other newer transcription models) use the plural "languages" field
-    # instead of the legacy singular "language" field used by whisper-1; sending both is
-    # rejected, and silently sending only "language" to gpt-transcribe is ignored.
-    language_kwargs = (
-        {"extra_body": {"languages": ["en"]}} if STT_MODEL != "whisper-1" else {"language": "en"}
-    )
+    # `language` is a single top-level request parameter supported by every STT model
+    # (whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, ...); there is no "languages"
+    # request field — that name only appears in gpt-transcribe's *response* (detected
+    # languages), so sending it as a request param is silently ignored by the API.
     result = await c.audio.transcriptions.create(
-        model=STT_MODEL, file=(filename, data), prompt=STT_PROMPT, **language_kwargs,
+        model=STT_MODEL, file=(filename, data), prompt=STT_PROMPT, language="en",
     )
     return result.text

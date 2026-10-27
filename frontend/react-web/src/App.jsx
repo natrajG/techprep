@@ -41,6 +41,10 @@ function isHallucinatedChunk(text) {
   return HALLUCINATED_PHRASES.has(normalized) || HALLUCINATED_PHRASES.has(normalized + ".");
 }
 
+// Pace auto-scrolling while the answer streams in, instead of jumping to the bottom on every
+// token, so each new line stays visible long enough to actually read before it scrolls away.
+const ANSWER_AUTO_SCROLL_INTERVAL_MS = 600;
+
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
 // Plans that grant a single call window tracked via call_time_remaining_seconds: the hourly
 // paid plan and the free trial granted automatically at signup.
@@ -80,6 +84,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const setOpacity = (value) => setOpacityState(clampHudOpacity(value));
   const answerScrollRef = useRef(null);
   const followAnswerRef = useRef(true);
+  const lastAnswerAutoScrollRef = useRef(0);
   const [captureProtection, setCaptureProtection] = useState({ supported: false, requested: false, status: "loading" });
   const [capturePending, setCapturePending] = useState(true);
   const [captureError, setCaptureError] = useState("");
@@ -198,12 +203,30 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   useEffect(() => localStorage.setItem("resume", resume), [resume]);
   useEffect(() => localStorage.setItem("jd", jd), [jd]);
   useEffect(() => localStorage.setItem("opacity", String(opacity)), [opacity]);
-  // Follow the streaming answer unless the user has scrolled up to read earlier text.
+  // Follow the streaming answer unless the user has scrolled up to read earlier text. While
+  // streaming, pace the auto-scroll (instead of jumping to the bottom on every token) so lines
+  // stay on screen long enough to read before the view advances; once the answer finishes, snap
+  // straight to the end so nothing is left out of view.
   useEffect(() => {
     const box = answerScrollRef.current;
     if (!box) return;
-    if (!answer) followAnswerRef.current = true;
-    if (followAnswerRef.current) box.scrollTop = box.scrollHeight;
+    if (!answer) {
+      followAnswerRef.current = true;
+      lastAnswerAutoScrollRef.current = 0;
+      box.scrollTop = 0;
+      return;
+    }
+    if (!followAnswerRef.current) return;
+    const scrollToEnd = (behavior) => box.scrollTo({ top: box.scrollHeight, behavior });
+    if (!busy) {
+      scrollToEnd("smooth");
+      return;
+    }
+    const now = Date.now();
+    if (now - lastAnswerAutoScrollRef.current >= ANSWER_AUTO_SCROLL_INTERVAL_MS) {
+      lastAnswerAutoScrollRef.current = now;
+      scrollToEnd("smooth");
+    }
   }, [answer, question, busy]);
   function trackAnswerScroll(event) {
     const box = event.currentTarget;
