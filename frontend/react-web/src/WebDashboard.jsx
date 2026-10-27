@@ -41,7 +41,7 @@ export default function WebDashboard({
             <span style={{ ...styles.statusDot, background: hasActiveSub ? "#4ade80" : "#f87171" }} />
             <span style={styles.userName}>{user}</span>
             <span style={hasActiveSub ? styles.proTag : styles.unpaidTag}>
-              {hasActiveSub ? (subscription.plan_name.split(" ")[0]) : "Inactive"}
+              {hasActiveSub ? "Active" : "Inactive"}
             </span>
           </div>
           <button style={styles.signOutBtn} onClick={onSignOut}>
