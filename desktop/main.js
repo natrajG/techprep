@@ -1,6 +1,6 @@
 // Desktop shell: a frameless, transparent, optionally always-on-top window that hosts the web UI.
 // It runs independently of any browser tab; capture protection is platform-dependent.
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net, shell, globalShortcut } = require("electron");
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, dialog, net, shell, globalShortcut, Notification } = require("electron");
 const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const os = require("os");
@@ -30,6 +30,19 @@ function restoreExistingWindow() {
   if (target.isMinimized()) target.restore();
   target.show();
   target.focus();
+}
+
+// The overlay has no taskbar/Dock entry, so once minimized, a native OS notification is the only
+// way to remind the user how to bring it back (an in-page toast would be hidden along with the
+// window). Shown each time to minimize the chance of it being missed or forgotten.
+function notifyMinimizeShortcut() {
+  if (!Notification.isSupported()) return;
+  const accelerator = process.platform === "darwin" ? "Cmd+Shift+T" : "Ctrl+Shift+T";
+  new Notification({
+    title: "TechPrep minimized",
+    body: `Press ${accelerator} anytime to bring it back — it won't appear in the taskbar/Dock.`,
+    silent: true,
+  }).show();
 }
 
 // Linux: Chromium hides PulseAudio "monitor" sources, so route the app's default audio input to the
@@ -233,7 +246,10 @@ if (gotSingleInstanceLock) {
       openLogin();
       closing.close();
     });
-    ipcMain.handle("minimize", () => win.minimize());
+    ipcMain.handle("minimize", () => {
+      win.minimize();
+      notifyMinimizeShortcut();
+    });
     ipcMain.handle("close", () => win.close());
     ipcMain.handle("open-external", (_event, url) => {
       if (typeof url === "string" && /^https?:\/\//i.test(url)) {
