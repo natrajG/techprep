@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import auth, downloads, llm, mailer, rate_limit, settings, subscriptions, users
 from . import feedback
+from . import mock_interview
 from .prompts import EVALUATE_PROMPT, QUESTION_EXTRACT_PROMPT, SYSTEM_PROMPT
 
 @asynccontextmanager
@@ -63,6 +64,7 @@ app.add_middleware(SlowRequestLog)
 app.include_router(downloads.router)
 app.include_router(subscriptions.router)
 app.include_router(feedback.router)
+app.include_router(mock_interview.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[] if settings.production() else ["http://localhost:5173", "http://127.0.0.1:5173"],

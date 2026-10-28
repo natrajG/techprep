@@ -5,6 +5,7 @@ import SubscriptionPricing from "./SubscriptionPricing";
 import AdminPlans from "./AdminPlans";
 import AdminFeedback from "./AdminFeedback";
 import FeedbackModal from "./FeedbackModal";
+import MockInterview from "./MockInterview";
 import { lowCallWarning } from "./subscriptions.mjs";
 
 export default function WebDashboard({
@@ -20,6 +21,7 @@ export default function WebDashboard({
 }) {
   const [showPricing, setShowPricing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showMockInterview, setShowMockInterview] = useState(false);
   const hasActiveSub = subscription && subscription.status === "active";
   const lowCalls = lowCallWarning(subscription);
   const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
@@ -47,6 +49,9 @@ export default function WebDashboard({
               {hasActiveSub ? "Active" : "Inactive"}
             </span>
           </div>
+          <button style={styles.mockInterviewBtn} onClick={() => setShowMockInterview(true)}>
+            ✨ Mock Interview
+          </button>
           <button style={styles.signOutBtn} onClick={() => setShowFeedback(true)}>
             Feedback
           </button>
@@ -208,6 +213,8 @@ export default function WebDashboard({
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
+      {showMockInterview && <MockInterview onClose={() => setShowMockInterview(false)} />}
+
       {showPricing && (
         <SubscriptionPricing
           currentSubscription={subscription}
@@ -322,6 +329,16 @@ const styles = {
     fontSize: 12,
     cursor: "pointer",
     fontWeight: 600,
+  },
+  mockInterviewBtn: {
+    background: "linear-gradient(135deg, rgba(167, 139, 250, 0.18) 0%, rgba(56, 189, 248, 0.18) 100%)",
+    border: "1px solid rgba(167, 139, 250, 0.4)",
+    color: "#e0d6ff",
+    padding: "7px 14px",
+    borderRadius: 8,
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 700,
   },
   main: {
     maxWidth: 1040,
