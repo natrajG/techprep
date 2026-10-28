@@ -3,6 +3,8 @@ import RecoveryEmail from "./RecoveryEmail";
 import DesktopDownload from "./DesktopDownload";
 import SubscriptionPricing from "./SubscriptionPricing";
 import AdminPlans from "./AdminPlans";
+import AdminFeedback from "./AdminFeedback";
+import FeedbackModal from "./FeedbackModal";
 import { lowCallWarning } from "./subscriptions.mjs";
 
 export default function WebDashboard({
@@ -17,6 +19,7 @@ export default function WebDashboard({
   onRefreshSubscription,
 }) {
   const [showPricing, setShowPricing] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const hasActiveSub = subscription && subscription.status === "active";
   const lowCalls = lowCallWarning(subscription);
   const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
@@ -44,6 +47,9 @@ export default function WebDashboard({
               {hasActiveSub ? "Active" : "Inactive"}
             </span>
           </div>
+          <button style={styles.signOutBtn} onClick={() => setShowFeedback(true)}>
+            Feedback
+          </button>
           <button style={styles.signOutBtn} onClick={onSignOut}>
             Sign Out
           </button>
@@ -135,6 +141,7 @@ export default function WebDashboard({
             )}
           </section>
           {isAdmin && <AdminPlans />}
+          {isAdmin && <AdminFeedback />}
           <section style={styles.card}>
             <div style={styles.cardHeader}>
               <h2 style={styles.cardTitle}>AI Token Usage</h2>
@@ -198,6 +205,8 @@ export default function WebDashboard({
           </section>
         </div>
       </main>
+
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
       {showPricing && (
         <SubscriptionPricing

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from . import auth, downloads, llm, mailer, rate_limit, settings, subscriptions, users
+from . import feedback
 from .prompts import EVALUATE_PROMPT, QUESTION_EXTRACT_PROMPT, SYSTEM_PROMPT
 
 @asynccontextmanager
@@ -24,7 +25,11 @@ async def lifespan(_app: FastAPI):
             conn.execute("SELECT 1")
         if not _DIST.is_dir():
             raise RuntimeError("Production requires the built React UI.")
-    yield
+    cleanup_task = asyncio.create_task(feedback.cleanup_loop())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
 
 
 class SlowRequestLog:
@@ -57,6 +62,7 @@ app = FastAPI(title="TechPrep API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(SlowRequestLog)
 app.include_router(downloads.router)
 app.include_router(subscriptions.router)
+app.include_router(feedback.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[] if settings.production() else ["http://localhost:5173", "http://127.0.0.1:5173"],
