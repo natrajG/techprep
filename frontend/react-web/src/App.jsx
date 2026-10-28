@@ -20,7 +20,6 @@ import "./overlay.css";
 const API = import.meta.env.VITE_API_URL || "";
 const load = (k, d = "") => localStorage.getItem(k) ?? d;
 const desktop = window.desktop; // exposed by the Electron preload script
-const isMac = desktop?.platform === "darwin";
 // On Linux the desktop app records its default input, which it routes to the PulseAudio monitor (system audio).
 const useDeviceInput = desktop?.platform === "linux";
 
@@ -560,11 +559,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title="Quick Settings" aria-expanded={menuOpen}>⋮</button>
         {desktop ? (
           <>
-            <button
-              className="hud-icon"
-              onClick={() => desktop.minimize()}
-              title={`Minimize (restore with ${isMac ? "Cmd" : "Ctrl"}+Shift+T)`}
-            >–</button>
+            <button className="hud-icon" onClick={() => desktop.minimize()} title="Minimize">–</button>
             <button className="hud-pill hud-end" onClick={() => desktop.close()} title="Close">End</button>
           </>
         ) : null}
