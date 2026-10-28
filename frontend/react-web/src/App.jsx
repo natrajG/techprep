@@ -12,6 +12,8 @@ import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning, sendHear
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
 import FeedbackModal from "./FeedbackModal";
+import ResumeUploadButton from "./ResumeUploadButton";
+import ProfileOnboarding, { shouldShowProfileOnboarding } from "./ProfileOnboarding";
 import "./overlay.css";
 
 // Vite proxies API requests; FastAPI serves them directly in the desktop app.
@@ -91,6 +93,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [captureError, setCaptureError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showProfileOnboarding, setShowProfileOnboarding] = useState(() => shouldShowProfileOnboarding());
   const [subscription, setSubscription] = useState(initialSubscription);
   const [subExpired, setSubExpired] = useState(!hasAvailableCall(initialSubscription));
   const [showPricingModal, setShowPricingModal] = useState(false);
@@ -686,6 +689,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           <details>
             <summary>Profile (resume &amp; job description — saved locally)</summary>
             <textarea rows={4} placeholder="Paste your resume…" value={resume} onChange={(e) => setResume(e.target.value)} />
+            <ResumeUploadButton onExtracted={setResume} style={{ margin: "6px 0" }} />
             <textarea rows={3} placeholder="Paste the job description…" value={jd} onChange={(e) => setJd(e.target.value)} />
           </details>
           <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: "#95c8ff", fontSize: 13, marginRight: 12 }}>Privacy policy</a>
@@ -695,6 +699,15 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       )}
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showProfileOnboarding && (
+        <ProfileOnboarding
+          resume={resume}
+          setResume={setResume}
+          jd={jd}
+          setJd={setJd}
+          onClose={() => setShowProfileOnboarding(false)}
+        />
+      )}
 
       <section className="hud-card hud-qa" ref={answerScrollRef} onScroll={trackAnswerScroll}>
         <div className="hud-row">

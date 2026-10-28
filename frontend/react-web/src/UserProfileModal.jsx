@@ -2,6 +2,7 @@ import { useState } from "react";
 import DesktopDownload from "./DesktopDownload";
 import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import AdminPlans from "./AdminPlans";
+import ResumeUploadButton from "./ResumeUploadButton";
 import { splitBold } from "./rich-text.mjs";
 import { MIN_HUD_OPACITY } from "./hud-opacity.mjs";
 
@@ -203,6 +204,7 @@ export default function UserProfileModal({
                     onChange={(e) => setResume(e.target.value)}
                   />
                 </label>
+                <ResumeUploadButton onExtracted={setResume} style={{ marginTop: -4 }} />
 
                 <label style={{ ...styles.fieldLabel, marginTop: 12 }}>
                   Target Job Description &amp; Requirements
