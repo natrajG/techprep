@@ -88,6 +88,10 @@ body { background: #080a11; }
 }
 .hud-qa { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 .hud-q { margin: 10px 0 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); line-height: 1.45; }
+/* A finished Q&A pair kept visible above the live one (instead of being wiped out by it) is
+   dimmed slightly so the current question/answer still reads as the primary focus. */
+.hud-qa-pair--archived { opacity: 0.6; }
+.hud-qa-pair--archived + .hud-q { margin-top: 16px; }
 .hud-q b, .hud-a > b { color: #c7d2fe; letter-spacing: 0.02em; }
 .hud-a { line-height: 1.6; }
 .hud-a pre {

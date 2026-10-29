@@ -64,6 +64,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [manualQ, setManualQ] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  // Completed Q&A pairs from earlier in the call, kept so a new question never wipes out the
+  // previous answer — it's appended below instead. Capped to the last entry (plus the
+  // in-progress one) so the view doesn't grow unbounded during a long interview.
+  const [qaLog, setQaLog] = useState([]);
   const [listening, setListening] = useState(false);
   const [captureStarting, setCaptureStarting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -218,7 +222,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     if (!answer) {
       followAnswerRef.current = true;
       lastAnswerAutoScrollRef.current = 0;
-      box.scrollTop = 0;
+      // Only snap to the top when there's no archived Q&A above to preserve; otherwise stay put
+      // so the just-archived previous answer remains visible instead of jumping out of view.
+      if (!qaLog.length) box.scrollTop = 0;
       return;
     }
     if (!followAnswerRef.current) return;
@@ -232,7 +238,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       lastAnswerAutoScrollRef.current = now;
       scrollToEnd("smooth");
     }
-  }, [answer, question, busy]);
+  }, [answer, question, busy, qaLog]);
   function trackAnswerScroll(event) {
     const box = event.currentTarget;
     followAnswerRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
@@ -278,6 +284,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     lastAnsweredRef.current = "";
     autoAnswerPendingRef.current = null;
     setTranscript("");
+    setQaLog([]);
   }
 
   function isFillerOnly(text) {
@@ -444,6 +451,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     }
     busyRef.current = true;
     setBusy(true);
+    // Archive the previous Q&A pair instead of discarding it, so it stays visible (scrolled
+    // above the new one) rather than being replaced. Keep only the last pair of history so the
+    // log doesn't grow unbounded across a long call.
+    setQaLog((log) => (question && answer ? [...log, { question, answer }].slice(-1) : log));
     setAnswer("");
     setQuestion("");
     try {
@@ -718,13 +729,21 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
             onKeyDown={(e) => e.key === "Enter" && !busy && getAnswer()}
           />
         </div>
+        {qaLog.map((pair, i) => (
+          <div key={i} className="hud-qa-pair hud-qa-pair--archived">
+            <p className="hud-q"><b>💬 Question:</b> {pair.question}</p>
+            <div className="hud-a"><b>⭐ Answer:</b>
+              <pre>{splitBold(pair.answer).map((part, j) => part.bold ? <strong key={j}>{part.text}</strong> : part.text)}</pre>
+            </div>
+          </div>
+        ))}
         {question && <p className="hud-q"><b>💬 Question:</b> {question}</p>}
         {(answer || busy) && (
           <div className="hud-a"><b>⭐ Answer:</b>
             <pre>{splitBold(answer).map((part, i) => part.bold ? <strong key={i}>{part.text}</strong> : part.text)}</pre>
           </div>
         )}
-        {!question && !answer && !busy && <p className="hud-muted">Answers appear here.</p>}
+        {!qaLog.length && !question && !answer && !busy && <p className="hud-muted">Answers appear here.</p>}
         {status && chips.length > 0 && <p className="hud-muted hud-status">{status}</p>}
       </section>
     </main>
