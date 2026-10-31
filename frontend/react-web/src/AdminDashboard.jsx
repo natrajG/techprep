@@ -143,23 +143,46 @@ export default function AdminDashboard({ user, onSignOut }) {
         {/* Top Summary Metrics */}
         {summary && (
           <div style={styles.metricGrid}>
-            <div style={styles.metricCard}>
-              <span style={styles.metricLabel}>Total Registered Users</span>
-              <strong style={styles.metricValue}>{summary.total_users}</strong>
+            <div style={{ ...styles.metricCard, border: "1px solid rgba(74, 222, 128, 0.3)", background: "rgba(34, 197, 94, 0.08)" }}>
+              <span style={{ ...styles.metricLabel, color: "#86efac" }}>💳 Actual Payment Revenue</span>
+              <strong style={{ ...styles.metricValue, color: "#4ade80" }}>
+                ₹{(summary.actual_payment_revenue || 0).toLocaleString()}
+              </strong>
+              <span style={{ fontSize: 11, color: "#cbd5e1" }}>
+                From {summary.total_paid_orders || 0} verified customer payment{summary.total_paid_orders === 1 ? "" : "s"}
+              </span>
             </div>
+
+            <div style={{ ...styles.metricCard, border: "1px solid rgba(168, 85, 247, 0.3)", background: "rgba(168, 85, 247, 0.08)" }}>
+              <span style={{ ...styles.metricLabel, color: "#d8b4fe" }}>🎁 Backend Grants / Free Passes</span>
+              <strong style={{ ...styles.metricValue, color: "#c084fc" }}>
+                {summary.total_granted_orders || 0}
+              </strong>
+              <span style={{ fontSize: 11, color: "#cbd5e1" }}>
+                Complimentary &amp; backend added
+              </span>
+            </div>
+
             <div style={styles.metricCard}>
               <span style={styles.metricLabel}>Active Subscriptions</span>
-              <strong style={{ ...styles.metricValue, color: "#4ade80" }}>{summary.total_active_subs}</strong>
+              <strong style={styles.metricValue}>{summary.total_active_subs || 0}</strong>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                {summary.total_active_paid_subs || 0} Paid · {summary.total_active_free_subs || 0} Free/Trial
+              </span>
             </div>
+
             <div style={styles.metricCard}>
               <span style={styles.metricLabel}>Total Tokens Burned</span>
               <strong style={{ ...styles.metricValue, color: "#38bdf8" }}>
-                {summary.total_tokens_burned.toLocaleString()}
+                {(summary.total_tokens_burned || 0).toLocaleString()}
               </strong>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Across all 15 users</span>
             </div>
+
             <div style={styles.metricCard}>
-              <span style={styles.metricLabel}>Total Recharges / Revenue</span>
-              <strong style={{ ...styles.metricValue, color: "#facc15" }}>₹{summary.total_revenue.toLocaleString()}</strong>
+              <span style={styles.metricLabel}>Total Users</span>
+              <strong style={styles.metricValue}>{summary.total_users || 0}</strong>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Registered accounts</span>
             </div>
           </div>
         )}
@@ -228,6 +251,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                   <thead>
                     <tr>
                       <th style={styles.th}>User / Email</th>
+                      <th style={styles.th}>Actual Paid (₹)</th>
                       <th style={styles.th}>Active Subscription</th>
                       <th style={styles.th}>AI Token Usage</th>
                       <th style={styles.th}>Recharges</th>
@@ -238,6 +262,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                     {filteredUsers.map((u) => {
                       const active = u.active_subscription;
                       const isExpanded = expandedUser === u.username;
+                      const paidAmt = u.paid_revenue || 0;
                       return (
                         <tr key={u.username} style={styles.tr}>
                           <td style={styles.td}>
@@ -245,9 +270,19 @@ export default function AdminDashboard({ user, onSignOut }) {
                             <div style={{ fontSize: 12, color: "#94a3b8" }}>{u.email || "No email"}</div>
                           </td>
                           <td style={styles.td}>
+                            {paidAmt > 0 ? (
+                              <span style={styles.paidRevenueTag}>💳 ₹{paidAmt}</span>
+                            ) : (
+                              <span style={styles.freeRevenueTag}>₹0 (Free / Trial)</span>
+                            )}
+                          </td>
+                          <td style={styles.td}>
                             {active ? (
                               <div>
-                                <span style={styles.activeTag}>{active.plan_name}</span>
+                                <span style={active.is_paid ? styles.activePaidTag : styles.activeGrantTag}>
+                                  {active.is_paid ? "💳 " : "🎁 "}
+                                  {active.plan_name}
+                                </span>
                                 <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 4 }}>
                                   Calls: <strong>{active.calls_remaining ?? 0}</strong> of {active.calls_total ?? "—"}
                                 </div>
@@ -350,11 +385,19 @@ export default function AdminDashboard({ user, onSignOut }) {
                                 <tr key={o.order_id}>
                                   <td style={styles.subTd}>{o.order_id}</td>
                                   <td style={styles.subTd}>{o.plan_name}</td>
-                                  <td style={styles.subTd}>₹{o.amount}</td>
                                   <td style={styles.subTd}>
-                                    <span style={o.status === "verified" ? styles.verifiedBadge : styles.pendingBadge}>
-                                      {o.status}
-                                    </span>
+                                    <strong style={{ color: o.is_paid ? "#4ade80" : "#cbd5e1" }}>
+                                      ₹{o.amount}
+                                    </strong>
+                                  </td>
+                                  <td style={styles.subTd}>
+                                    {o.is_paid ? (
+                                      <span style={styles.verifiedPaidBadge}>💳 Paid (Razorpay)</span>
+                                    ) : o.type === "grant" ? (
+                                      <span style={styles.grantBadge}>🎁 Admin Grant</span>
+                                    ) : (
+                                      <span style={styles.pendingBadge}>{o.status}</span>
+                                    )}
                                   </td>
                                   <td style={styles.subTd}>{new Date(o.created_at * 1000).toLocaleString()}</td>
                                   <td style={styles.subTd}>{o.reference || "—"}</td>
@@ -376,7 +419,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                                 <th style={styles.subTh}>ID</th>
                                 <th style={styles.subTh}>Plan</th>
                                 <th style={styles.subTh}>Amount</th>
-                                <th style={styles.subTh}>Status</th>
+                                <th style={styles.subTh}>Type / Status</th>
                                 <th style={styles.subTh}>Calls</th>
                                 <th style={styles.subTh}>Granted / Created</th>
                                 <th style={styles.subTh}>Ref Note</th>
@@ -388,7 +431,15 @@ export default function AdminDashboard({ user, onSignOut }) {
                                   <td style={styles.subTd}>#{s.id}</td>
                                   <td style={styles.subTd}>{s.plan_name}</td>
                                   <td style={styles.subTd}>₹{s.amount}</td>
-                                  <td style={styles.subTd}>{s.status}</td>
+                                  <td style={styles.subTd}>
+                                    {s.is_paid ? (
+                                      <span style={styles.verifiedPaidBadge}>💳 Paid ({s.status})</span>
+                                    ) : s.type === "free_trial" ? (
+                                      <span style={styles.trialBadge}>🎁 Free Trial ({s.status})</span>
+                                    ) : (
+                                      <span style={styles.grantBadge}>🎁 Granted ({s.status})</span>
+                                    )}
+                                  </td>
                                   <td style={styles.subTd}>{s.call_limit ?? "1"} calls</td>
                                   <td style={styles.subTd}>{new Date(s.created_at * 1000).toLocaleDateString()}</td>
                                   <td style={styles.subTd}>{s.transaction_ref || "—"}</td>
@@ -632,6 +683,37 @@ const styles = {
   th: { padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#94a3b8", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid rgba(255, 255, 255, 0.05)" },
   td: { padding: "12px 14px", fontSize: 13, color: "#e2e8f0", verticalAlign: "middle" },
+  paidRevenueTag: {
+    padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+    background: "rgba(34, 197, 94, 0.15)", color: "#4ade80", border: "1px solid rgba(74, 222, 128, 0.3)",
+    display: "inline-block",
+  },
+  freeRevenueTag: {
+    padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600,
+    background: "rgba(148, 163, 184, 0.1)", color: "#94a3b8", display: "inline-block",
+  },
+  activePaidTag: {
+    padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+    background: "rgba(34, 197, 94, 0.15)", color: "#86efac", border: "1px solid rgba(74, 222, 128, 0.3)",
+    display: "inline-block",
+  },
+  activeGrantTag: {
+    padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+    background: "rgba(168, 85, 247, 0.15)", color: "#d8b4fe", border: "1px solid rgba(168, 85, 247, 0.3)",
+    display: "inline-block",
+  },
+  verifiedPaidBadge: {
+    padding: "2px 8px", borderRadius: 4, background: "rgba(74, 222, 128, 0.15)", color: "#86efac",
+    fontSize: 10, fontWeight: 700, border: "1px solid rgba(74, 222, 128, 0.3)",
+  },
+  grantBadge: {
+    padding: "2px 8px", borderRadius: 4, background: "rgba(168, 85, 247, 0.15)", color: "#d8b4fe",
+    fontSize: 10, fontWeight: 700, border: "1px solid rgba(168, 85, 247, 0.3)",
+  },
+  trialBadge: {
+    padding: "2px 8px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#7dd3fc",
+    fontSize: 10, fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)",
+  },
   activeTag: {
     padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
     background: "rgba(74, 222, 128, 0.15)", color: "#86efac", display: "inline-block",

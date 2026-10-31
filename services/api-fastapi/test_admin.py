@@ -91,8 +91,13 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             user_entry = users_res.json()["users"][0]
             self.assertIsNotNone(user_entry["active_subscription"])
             self.assertEqual(user_entry["active_subscription"]["plan_name"], "Pro Scholarship")
+            self.assertEqual(user_entry["active_subscription"]["type"], "grant")
+            self.assertEqual(user_entry["paid_revenue"], 0)
+            self.assertEqual(users_res.json()["summary"]["actual_payment_revenue"], 0)
+            self.assertEqual(users_res.json()["summary"]["total_granted_orders"], 1)
             self.assertGreaterEqual(len(user_entry["recharges"]), 1)
             self.assertEqual(user_entry["recharges"][0]["status"], "verified")
+            self.assertEqual(user_entry["recharges"][0]["type"], "grant")
 
             # Revoke subscription
             revoke_res = await self.client.post(

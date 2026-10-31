@@ -18,6 +18,33 @@ def require_admin(user: str = Depends(require_auth)) -> str:
     return user
 
 
+def classify_order(order_id: str, amount: int, status: str, reference: str | None) -> tuple[str, bool]:
+    """Returns (order_type, is_paid_revenue).
+    order_type: 'paid' | 'grant' | 'pending'
+    is_paid_revenue: True only for actual customer payments through gateway
+    """
+    oid = (order_id or "").upper()
+    ref = (reference or "").upper()
+    if oid.startswith("ADM_") or oid.startswith("ADMIN_") or "ADMIN" in ref or "GRANT" in ref:
+        return ("grant", False)
+    if status == "verified" and amount > 0:
+        return ("paid", True)
+    if status == "verified":
+        return ("grant", False)
+    return ("pending", False)
+
+
+def classify_subscription(plan_id: str, plan_name: str, amount: int, transaction_ref: str | None) -> str:
+    """Returns 'paid' | 'free_trial' | 'grant'"""
+    if plan_id == "free_trial":
+        return "free_trial"
+    ref = (transaction_ref or "").upper()
+    name = (plan_name or "").lower()
+    if ref.startswith("ADMIN") or "bonus" in name or "credit" in name or amount == 0:
+        return "grant"
+    return "paid"
+
+
 class GrantSubscriptionRequest(BaseModel):
     username: str = Field(min_length=1, max_length=50)
     plan_id: str = Field(default="monthly", max_length=50)
@@ -65,11 +92,20 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
                ORDER BY created_at DESC"""
         ).fetchall()
         orders_by_user: dict[str, list[dict[str, Any]]] = {}
-        total_revenue = 0
+        actual_payment_revenue = 0
+        total_paid_orders = 0
+        total_granted_orders = 0
+
         for r in order_rows:
             uname = r[1].lower()
-            if r[5] == "verified":
-                total_revenue += r[4]
+            ref = r[8] or r[9]
+            order_type, is_paid = classify_order(r[0], r[4], r[5], ref)
+            if is_paid:
+                actual_payment_revenue += r[4]
+                total_paid_orders += 1
+            elif order_type == "grant":
+                total_granted_orders += 1
+
             order_dict = {
                 "order_id": r[0],
                 "plan_id": r[2],
@@ -78,7 +114,9 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
                 "status": r[5],
                 "created_at": r[6],
                 "verified_at": r[7],
-                "reference": r[8] or r[9],
+                "reference": ref,
+                "type": order_type,
+                "is_paid": is_paid,
             }
             orders_by_user.setdefault(uname, []).append(order_dict)
 
@@ -92,6 +130,7 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
         subs_by_user: dict[str, list[dict[str, Any]]] = {}
         for r in sub_rows:
             uname = r[1].lower()
+            sub_type = classify_subscription(r[2], r[3], r[4], r[9])
             sub_dict = {
                 "id": r[0],
                 "plan_id": r[2],
@@ -104,28 +143,48 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
                 "transaction_ref": r[9],
                 "call_limit": r[10],
                 "duration_minutes": r[11],
+                "type": sub_type,
+                "is_paid": sub_type == "paid",
             }
             subs_by_user.setdefault(uname, []).append(sub_dict)
 
     result_users = []
-    total_active_subs = 0
+    total_active_paid_subs = 0
+    total_active_free_subs = 0
     total_tokens_burned = 0
 
     for uname, email in user_rows:
         uname_lower = uname.lower()
         active_sub = subscriptions.get_active_subscription(uname)
         if active_sub:
-            total_active_subs += 1
+            sub_type = classify_subscription(
+                active_sub.get("plan_id", ""),
+                active_sub.get("plan_name", ""),
+                active_sub.get("amount", 0),
+                active_sub.get("transaction_ref") or active_sub.get("reference"),
+            )
+            active_sub["type"] = sub_type
+            active_sub["is_paid"] = sub_type == "paid"
+            if sub_type == "paid":
+                total_active_paid_subs += 1
+            else:
+                total_active_free_subs += 1
 
         t_usage = token_map.get(uname_lower, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
         total_tokens_burned += t_usage["total_tokens"]
 
+        user_orders = orders_by_user.get(uname_lower, [])
+        user_paid_revenue = sum(o["amount"] for o in user_orders if o.get("is_paid"))
+        user_granted_count = sum(1 for o in user_orders if o.get("type") == "grant")
+
         result_users.append({
             "username": uname,
             "email": email,
+            "paid_revenue": user_paid_revenue,
+            "granted_orders_count": user_granted_count,
             "active_subscription": active_sub,
             "token_usage": t_usage,
-            "recharges": orders_by_user.get(uname_lower, []),
+            "recharges": user_orders,
             "subscriptions": subs_by_user.get(uname_lower, []),
         })
 
@@ -133,9 +192,13 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
         "users": result_users,
         "summary": {
             "total_users": len(user_rows),
-            "total_active_subs": total_active_subs,
+            "actual_payment_revenue": actual_payment_revenue,
+            "total_paid_orders": total_paid_orders,
+            "total_granted_orders": total_granted_orders,
+            "total_active_paid_subs": total_active_paid_subs,
+            "total_active_free_subs": total_active_free_subs,
+            "total_active_subs": total_active_paid_subs + total_active_free_subs,
             "total_tokens_burned": total_tokens_burned,
-            "total_revenue": total_revenue,
         },
     }
 
