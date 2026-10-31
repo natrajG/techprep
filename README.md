@@ -145,19 +145,30 @@ resume/job details when switching.
 ### Desktop app (floating, transparent, stays open without a browser)
 
 **Production:** see [Lightsail deployment](docs/lightsail-deployment.md) for the public HTTPS
-server and [signed Windows releases](docs/desktop-capture-protection.md#production-signed-release).
-For Microsoft Store distribution without a code-signing certificate, use the
+server and [signed Windows releases](docs/desktop-capture-protection.md#production-signed-release)
+and [signed, notarized macOS releases](docs/desktop-capture-protection.md#macos-production-signed-release).
+No Mac is required to build the macOS release: the **macOS signed release** GitHub Actions
+workflow builds it on a hosted runner — see
+[building without owning a Mac](docs/desktop-capture-protection.md#building-without-owning-a-mac).
+Can't yet afford the $99/year Apple Developer Program fee? Use the free, unsigned
+**macOS unsigned (free-tier) release** workflow instead (no Apple credentials needed) — see
+[free-tier release: unsigned](docs/desktop-capture-protection.md#free-tier-release-unsigned-no-apple-developer-program-account).
+Users of that build see a one-time Gatekeeper warning they must manually bypass; it is not a hard
+block. For Microsoft Store distribution without a code-signing certificate, use the
 [Windows AppX package](docs/desktop-capture-protection.md#microsoft-store-package-appx).
 Production installers point to the public server, need no certificate import, and are served only
-when a verified signed-release manifest matches. Desktop builds need Node.js 22 (`nvm install`).
+when a verified release manifest matches. Desktop builds need Node.js 22 (`nvm install`).
 
 **Download after login:** for local LAN testing, sign in in your browser, click
-**Download Windows app**, and run `TechPrep-Setup.exe`. In production, the website
-instead offers Store installation once the Store release is published; until then
-it shows a coming-soon message. Sign in again in the installed desktop app.
-The Windows LAN installer connects to the server configured at build time; no Python or
+**Download Windows app** or **Download Mac app**, and run `TechPrep-Setup.exe` or open
+`TechPrep.dmg`. In production, the Mac download always serves the current `.dmg` directly from
+the website once published (no app store, no upload or review process) — signed/notarized once
+an Apple Developer Program account is set up, or unsigned (with in-app bypass instructions) until
+then; the Windows download instead offers Store installation once the Store release is published,
+and shows a coming-soon message until then. Sign in again in the installed desktop app.
+The LAN installers connect to the server configured at build time; no Python or
 environment-variable setup is needed on the client. Keep the server running.
-For local HTTPS, trust the server's CA certificate in Windows first; the download panel
+For local HTTPS, trust the server's CA certificate first; the download panel
 includes a certificate download and instructions (LAN mode only). Browser login is not transferred to the app.
 The installer and public CA certificate download endpoints require a valid login.
 Installers are not served from Vite's public directory.

@@ -1,0 +1,40 @@
+name: macOS signed release
+
+# Manual release. Runs on a GitHub-hosted macOS runner, so no local Mac is needed.
+# Signing uses a Developer ID Application certificate (.p12) supplied through secrets;
+# notarization uses an Apple ID app-specific password. Nothing is published unless
+# codesign, Gatekeeper, and notarization all verify.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: macos-latest
+    environment: production-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm --prefix frontend/react-web ci
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop test
+      - run: npm --prefix desktop run release:mac
+        env:
+          TECHPREP_SERVER_URL: ${{ vars.TECHPREP_SERVER_URL }}
+          TECHPREP_SIGNER_TEAM_ID: ${{ vars.TECHPREP_SIGNER_TEAM_ID }}
+          APPLE_TEAM_ID: ${{ vars.TECHPREP_SIGNER_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: techprep-mac-release
+          path: |
+            desktop/release/production-mac/publish/TechPrep.dmg
+            desktop/release/production-mac/publish/desktop-release-mac.json
+          if-no-files-found: error

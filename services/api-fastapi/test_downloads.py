@@ -20,7 +20,7 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
         await self.client.aclose()
 
     async def test_authentication_required_for_both_downloads(self):
-        for target in ("windows", "ca"):
+        for target in ("windows", "mac", "ca"):
             for headers in ({}, {"Authorization": "Bearer invalid"}):
                 response = await self.client.get(f"/api/v1/downloads/{target}", headers=headers)
                 self.assertEqual(response.status_code, 401)
@@ -29,7 +29,7 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / "missing"
             for target, setting, status in (
-                ("windows", "INSTALLER", 503), ("ca", "CA_CERTIFICATE", 404)
+                ("windows", "INSTALLER", 503), ("mac", "MAC_INSTALLER", 503), ("ca", "CA_CERTIFICATE", 404)
             ):
                 with patch.object(downloads, setting, missing):
                     response = await self.client.get(
@@ -44,6 +44,7 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
             file.write_bytes(b"download contents")
             for target, setting, filename in (
                 ("windows", "INSTALLER", "TechPrep-Setup.exe"),
+                ("mac", "MAC_INSTALLER", "TechPrep.dmg"),
                 ("ca", "CA_CERTIFICATE", "TechPrep-Local-CA.crt"),
             ):
                 with patch.object(downloads, setting, file):

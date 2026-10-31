@@ -199,6 +199,21 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
         downloads._verified.clear()
         return releases
 
+    def publish_mac(self, contents=b"mac signed dmg", **changes):
+        releases = Path(self.directory.name) / "releases"
+        releases.mkdir(exist_ok=True)
+        (releases / "TechPrep.dmg").write_bytes(contents)
+        manifest = {
+            "schema": 1, "file": "TechPrep.dmg", "version": "0.2.0", "signed": True, "notarized": True,
+            "size": len(contents), "sha256": hashlib.sha256(contents).hexdigest(),
+            "serverUrl": PRODUCTION["APP_PUBLIC_URL"] + "/",
+            **changes,
+        }
+        (releases / "desktop-release-mac.json").write_text(json.dumps(manifest))
+        os.environ["DESKTOP_RELEASE_DIR"] = str(releases)
+        downloads._verified_mac.clear()
+        return releases
+
     async def download(self, target="windows"):
         headers = {"Authorization": f"Bearer {auth.issue_token('download-user')}"}
         return await self.client.get(f"/api/v1/downloads/{target}", headers=headers)
@@ -223,6 +238,53 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
         releases = self.publish()
         (releases / "desktop-release.json").write_text("not json")
         self.assertEqual((await self.download()).status_code, 503)
+
+    async def test_production_serves_only_a_verified_signed_notarized_mac_release(self):
+        self.publish_mac()
+        response = await self.download("mac")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"mac signed dmg")
+
+    async def test_production_rejects_mistyped_mismatched_or_missing_mac_releases(self):
+        os.environ["DESKTOP_RELEASE_DIR"] = str(Path(self.directory.name) / "empty")
+        self.assertEqual((await self.download("mac")).status_code, 503)
+        for changes in (
+            {"signed": "true"}, {"notarized": "true"}, {"sha256": "0" * 64}, {"size": 1},
+            {"serverUrl": "https://other.duckdns.org/"}, {"serverUrl": "https://192.168.0.109:5173/"},
+            {"file": "Other.dmg"}, {"schema": 2},
+        ):
+            with self.subTest(changes=changes):
+                self.publish_mac(**changes)
+                self.assertEqual((await self.download("mac")).status_code, 503)
+        releases = self.publish_mac()
+        (releases / "desktop-release-mac.json").write_text("not json")
+        self.assertEqual((await self.download("mac")).status_code, 503)
+
+    async def test_production_serves_an_honestly_labelled_unsigned_free_tier_mac_release(self):
+        # Until an Apple Developer Program account is affordable, an unsigned release is still
+        # served, labelled honestly via the response header, instead of blocking macOS users entirely.
+        self.publish_mac(signed=False, notarized=False)
+        response = await self.download("mac")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"mac signed dmg")
+        self.assertEqual(response.headers["x-techprep-mac-signed"], "false")
+
+    async def test_production_labels_a_signed_notarized_mac_release_as_signed(self):
+        self.publish_mac()
+        response = await self.download("mac")
+        self.assertEqual(response.headers["x-techprep-mac-signed"], "true")
+
+    async def test_replaced_mac_installer_is_rehashed(self):
+        releases = self.publish_mac()
+        self.assertEqual((await self.download("mac")).status_code, 200)
+        (releases / "TechPrep.dmg").write_bytes(b"mac tampered installer")
+        self.assertEqual((await self.download("mac")).status_code, 503)
+
+    async def test_windows_and_mac_releases_are_verified_independently(self):
+        self.publish()
+        self.publish_mac()
+        self.assertEqual((await self.download("windows")).status_code, 200)
+        self.assertEqual((await self.download("mac")).status_code, 200)
 
     async def test_replaced_installer_is_rehashed(self):
         releases = self.publish()

@@ -71,7 +71,35 @@ ssh ubuntu@<host> 'sudo install -m 644 /tmp/TechPrep-Setup.exe /srv/techprep/rel
 
 Copy the installer first and the manifest last.
 
-## 5. Backups and restore
+## 5. macOS installer
+
+Production downloads are served only when `/srv/techprep/releases` contains **both**
+`TechPrep.dmg` and a matching `desktop-release-mac.json` (correct size, SHA-256, and `serverUrl`
+equal to `APP_PUBLIC_URL`). Otherwise users see "not available yet". Create them with
+`npm --prefix desktop run release:mac` **on macOS**, which refuses to publish unless the app and
+`.dmg` are Developer ID-signed, pass Gatekeeper, and are notarized by Apple (manifest
+`signed: true`, `notarized: true`) — see
+[macOS production signed release](desktop-capture-protection.md#macos-production-signed-release).
+This is a direct-download release; it does not involve any App Store Connect upload or review.
+
+If you cannot yet pay for an Apple Developer Program account, run
+`npm --prefix desktop run release:mac:unsigned` instead (no Apple credentials needed); it publishes
+the same two files with `signed: false, notarized: false` so the server still verifies and serves
+it honestly — see
+[free-tier release: unsigned](desktop-capture-protection.md#free-tier-release-unsigned-no-apple-developer-program-account).
+Users will see a one-time Gatekeeper warning they must bypass manually.
+
+```bash
+scp TechPrep.dmg desktop-release-mac.json ubuntu@<host>:/tmp/
+ssh ubuntu@<host> 'sudo install -m 644 /tmp/TechPrep.dmg /srv/techprep/releases/ && \
+  sudo install -m 644 /tmp/desktop-release-mac.json /srv/techprep/releases/'
+```
+
+Copy the installer first and the manifest last. It lives in the same `/srv/techprep/releases`
+directory as the Windows installer; the server verifies each platform's file/manifest pair
+independently.
+
+## 6. Backups and restore
 
 ```bash
 infra/lightsail/backup.sh                       # -> /var/backups/techprep/users-<UTC time>.db, keeps 14

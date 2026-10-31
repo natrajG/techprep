@@ -362,7 +362,9 @@ environment/CI secret storage (`CSC_LINK`/`CSC_KEY_PASSWORD` as appropriate);
 for notarization use its supported Apple ID/app-specific password/team ID or
 App Store Connect API credentials. See the
 [builder signing guide](https://www.electron.build/code-signing-mac.html).
-For Windows, see [Production signed release](#production-signed-release).
+For the distributable, signed, notarized release served from the website, see
+[macOS production signed release](#macos-production-signed-release).
+For Windows, see [Windows production signed release](#production-signed-release).
 No signing identities or secrets are supplied by this project.
 
 The macOS configuration enables hardened runtime and supplies JIT and audio
@@ -458,6 +460,125 @@ hardware token, HSM or cloud signing service (so a plain PFX is usually unavaila
 A self-signed certificate does **not** make Windows trust the installer. Signing identifies the
 publisher; it does not guarantee immediate SmartScreen reputation, and it cannot override
 device policies such as "Your admin caused Windows Security to block this action".
+
+## macOS production signed release
+
+`npm --prefix desktop run release:mac` builds the distributable `.dmg` served directly from the
+website (`/api/v1/downloads/mac`), the macOS equivalent of the signed `TechPrep-Setup.exe` above.
+This is a Developer ID direct-download release; it is **not** a Mac App Store submission, so no
+upload to App Store Connect/Transporter or App Review is involved. It refuses to run unless all
+of these hold:
+
+- It runs **on macOS** (signing/notarization verification use `codesign` and `spctl`).
+- `TECHPREP_SERVER_URL` is a public DNS HTTPS root (no IP, LAN name, custom port, or path),
+  e.g. `https://interviewassistant.in/`. The app embeds it; users need no configuration and no
+  certificate import.
+- `TECHPREP_SIGNER_TEAM_ID` is your 10-character Apple Developer Team ID.
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` are set so electron-builder's
+  bundled `@electron/notarize` step can submit the build to Apple notary service.
+  `APPLE_TEAM_ID` must match `TECHPREP_SIGNER_TEAM_ID`.
+
+Signing: electron-builder picks up your **Developer ID Application** identity from the login
+keychain (or `CSC_LINK`/`CSC_KEY_PASSWORD` for a `.p12`), with `hardenedRuntime` and the existing
+entitlements already configured. Only a single-architecture (`x64`) `.dmg` is produced, named
+`TechPrep.dmg`, matching the fixed filename the server expects.
+
+After building, both `release/production-mac/build/mac/TechPrep.app` and `TechPrep.dmg` must pass
+`codesign -dvvv` (validly signed, by the expected Team ID), `spctl -a -t exec -vv` (Gatekeeper
+**accepted**), and show `source=Notarized Developer ID` (stapled notarization ticket). Only then
+are `TechPrep.dmg` and `desktop-release-mac.json` (schema 1: file, version, serverUrl, size,
+sha256, `signed: true`, `notarized: true`, signer, builtAt) written to
+`desktop/release/production-mac/publish/`. The server serves the `.dmg` only when that manifest
+matches it exactly, independently of the Windows installer/manifest pair.
+
+Obtaining credentials: enroll in the [Apple Developer Program](https://developer.apple.com/programs/),
+create a **Developer ID Application** certificate in Xcode/Apple Developer, and generate an
+app-specific password at [appleid.apple.com](https://appleid.apple.com/) for `APPLE_APP_SPECIFIC_PASSWORD`
+(do not use your real Apple ID password). Notarization is Apple's automated malware scan; it does
+not review app functionality like Mac App Store review does.
+
+### Building without owning a Mac
+
+Signing and notarization verification require macOS tools (`codesign`, `spctl`), but you do not
+need to own a Mac. After pushing the updated source to GitHub, run
+**Actions > macOS signed release > Run workflow**. It builds on a GitHub-hosted `macos-latest`
+runner, then uploads a `techprep-mac-release` artifact containing `TechPrep.dmg` and
+`desktop-release-mac.json`; download and extract it, then follow
+[macOS installer](lightsail-deployment.md#5-macos-installer) to publish them. GitHub Actions
+usage may be billed depending on your repository and plan; macOS runners consume more minutes
+per wall-clock minute than Linux/Windows runners.
+
+The workflow needs these repository **variables** (Settings > Secrets and variables > Actions >
+Variables) and **secrets** (same page, Secrets tab), scoped to an environment named
+`production-release` if you use one (matching the existing Windows workflow):
+
+- `TECHPREP_SERVER_URL` (variable) — e.g. `https://interviewassistant.in/`.
+- `TECHPREP_SIGNER_TEAM_ID` (variable) — your 10-character Apple Developer Team ID.
+- `APPLE_ID` (secret) — the Apple ID email enrolled in the Developer Program.
+- `APPLE_APP_SPECIFIC_PASSWORD` (secret) — generated at
+  [appleid.apple.com](https://appleid.apple.com/) (Sign-In and Security > App-Specific Passwords).
+- `MAC_CSC_LINK` (secret) — your Developer ID Application certificate and private key, as a
+  base64-encoded `.p12`.
+- `MAC_CSC_KEY_PASSWORD` (secret) — the password you set when exporting that `.p12`.
+
+**Getting a Developer ID Application `.p12` entirely from Linux/Windows** (no Mac, no Keychain
+Access needed) after enrolling in the
+[Apple Developer Program](https://developer.apple.com/programs/):
+
+```bash
+# 1. Generate a private key and certificate signing request (CSR).
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout developerID.key -out developerID.csr \
+  -subj "/emailAddress=you@example.com/CN=Your Name/C=US"
+
+# 2. In developer.apple.com > Certificates > + > "Developer ID Application",
+#    upload developerID.csr, then download the issued certificate as developerID.cer.
+
+# 3. Convert Apple's DER certificate to PEM and combine it with your private key into a .p12.
+openssl x509 -inform der -in developerID.cer -out developerID.pem
+openssl pkcs12 -export -legacy \
+  -inkey developerID.key -in developerID.pem \
+  -out developerID.p12 -passout pass:"a-strong-password"
+
+# 4. Base64-encode it for the MAC_CSC_LINK secret (electron-builder accepts base64 .p12 content directly).
+base64 -w0 developerID.p12
+```
+
+Paste that base64 output as `MAC_CSC_LINK` and the export password as `MAC_CSC_KEY_PASSWORD`.
+Delete `developerID.key`/`developerID.p12` from disk afterward; never commit them. If your
+OpenSSL version omits `-legacy` support, drop that flag. This certificate only lets you **sign**
+and **notarize**; Apple ID/app-specific password credentials above are what actually submits the
+build for notarization, and both can be obtained entirely through a web browser, no Mac required.
+
+### Free-tier release: unsigned (no Apple Developer Program account)
+
+If you cannot yet pay the $99/year Apple Developer Program fee, `npm --prefix desktop run
+release:mac:unsigned` (or **Actions > macOS unsigned (free-tier) release > Run workflow**) builds
+and publishes the same `TechPrep.dmg` / `desktop-release-mac.json` pair, but with no code signing
+or notarization at all — only `TECHPREP_SERVER_URL` is required, no Apple credentials. The server
+accepts this release because `production_mac_installer()` honestly trusts the manifest's own
+`signed`/`notarized` flags (both `false` here) instead of requiring `true`; it still verifies the
+file's hash, size, and server URL exactly like the signed path, so the published build cannot be
+tampered with, it just is not Gatekeeper-trusted. The `/api/v1/downloads/mac` response includes an
+`X-Techprep-Mac-Signed: false` header so this is never silently misrepresented.
+
+**What end users see**: macOS Gatekeeper blocks the first launch with *"TechPrep cannot be opened
+because the developer cannot be verified."* This is **not a sign of malware** — it only means Apple
+has not (yet) notarized the app, which requires a paid Developer Program account. The app itself is
+unchanged and safe; Gatekeeper warns the same way about any unsigned software, open-source or not.
+This is not a hard block. Users bypass it once per machine by either:
+
+1. Right-click (Control-click) `TechPrep.app` in Finder/Applications → **Open** → confirm **Open**
+   in the dialog, or
+2. **System Settings → Privacy & Security** → scroll down → click **Open Anyway** (appears after
+   the first blocked attempt), or
+3. A one-time Terminal command: `xattr -cr /Applications/TechPrep.app`.
+
+After that one-time step the app opens normally. The download page on the site already shows
+these steps under "Opening TechPrep on Mac for the first time". Switch to
+`npm --prefix desktop run release:mac` (or the signed GitHub Actions workflow) once an Apple
+Developer Program account is affordable — no server or frontend changes are needed, only a new,
+properly signed publish of the same two files.
 
 ## Automated coverage and actual results
 

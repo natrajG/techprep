@@ -14,7 +14,9 @@
     "dist:win": "node build-windows.cjs",
     "release:win": "npm run build && node build-windows-production.cjs",
     "store:win": "node build-windows-store.cjs",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "release:mac": "npm run build && node build-mac-production.cjs",
+    "release:mac:unsigned": "npm run build && node build-mac-unsigned.cjs"
   },
   "devDependencies": {
     "electron": "44.7.1",
@@ -60,6 +62,9 @@
         "NSAudioCaptureUsageDescription": "TechPrep captures system audio you choose for transcription.",
         "NSScreenCaptureUsageDescription": "TechPrep lets you choose a display source for transcription."
       }
+    },
+    "dmg": {
+      "artifactName": "TechPrep.dmg"
     }
   }
 }

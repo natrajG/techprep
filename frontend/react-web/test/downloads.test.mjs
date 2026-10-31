@@ -10,6 +10,7 @@ function storage() {
 test("downloads use an authorization header, not a token in the URL", async () => {
   for (const [target, filename, type] of [
     ["windows", "TechPrep-Setup.exe", "application/octet-stream"],
+    ["mac", "TechPrep.dmg", "application/x-apple-diskimage"],
     ["ca", "TechPrep-Local-CA.crt", "application/x-x509-ca-cert"],
   ]) {
     const request = async (url, init) => {

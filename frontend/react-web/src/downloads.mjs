@@ -2,7 +2,14 @@ import { authFetch } from "./auth.mjs";
 
 const filenames = {
   windows: "TechPrep-Setup.exe",
+  mac: "TechPrep.dmg",
   ca: "TechPrep-Local-CA.crt",
+};
+
+const CONTENT_TYPES = {
+  windows: "application/octet-stream",
+  mac: "application/x-apple-diskimage",
+  ca: "application/x-x509-ca-cert",
 };
 
 export async function fetchDownload(api, target, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
@@ -17,9 +24,7 @@ export async function fetchDownload(api, target, fetchImpl = fetch, storage = lo
     }
     throw new Error(message);
   }
-  if (!response.headers.get("content-type")?.includes(
-    target === "windows" ? "application/octet-stream" : "application/x-x509-ca-cert"
-  )) {
+  if (!response.headers.get("content-type")?.includes(CONTENT_TYPES[target])) {
     throw new Error("The server did not return the requested download. Please contact the administrator.");
   }
   return { blob: await response.blob(), filename: filenames[target] };

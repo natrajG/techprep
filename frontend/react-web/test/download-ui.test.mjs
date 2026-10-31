@@ -31,6 +31,14 @@ test("download panel includes Windows installer and trusted CA setup instruction
   assert.doesNotMatch(html, /disabled=""/);
 });
 
+test("download panel always offers the notarized Mac installer, regardless of Windows Store state", () => {
+  for (const props of [{}, { localNetwork: false }, { localNetwork: false, storeUrl: "https://apps.microsoft.com/detail/9N36X6C5706B" }]) {
+    const html = renderToStaticMarkup(React.createElement(context.module.exports.default, props));
+    assert.match(html, /Download Mac app/);
+    assert.match(html, /macOS 13 \(Ventura\) or later/);
+  }
+});
+
 test("unpublished Store app does not offer a broken installer or listing link", () => {
   const html = renderToStaticMarkup(React.createElement(context.module.exports.default, { localNetwork: false }));
   assert.match(html, /Microsoft Store release coming soon/);
