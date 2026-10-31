@@ -4,9 +4,9 @@ const { validateServerUrl, resolveAppUrl } = require("../server-url");
 const { buildOptions } = require("../build-windows.cjs");
 const manifest = require("../package.json");
 
-test("build defaults embed the LAN URL and create an x64 NSIS installer without publishing", () => {
+test("build defaults embed the production URL and create an x64 NSIS installer without publishing", () => {
   const options = buildOptions([], {});
-  assert.equal(options.config.extraMetadata.techprepServerUrl, "https://192.168.0.109:5173/");
+  assert.equal(options.config.extraMetadata.techprepServerUrl, "https://interviewassistant.in/");
   assert.deepEqual(options.win, ["nsis"]);
   assert.equal(options.x64, true);
   assert.equal(options.publish, "never");
@@ -22,7 +22,7 @@ test("build URL override is normalized and does not change source metadata", () 
     TECHPREP_BUILD_OUTPUT: "release/custom-build",
   });
   assert.equal(options.config.extraMetadata.techprepServerUrl, "https://server.example:5173/");
-  assert.equal(manifest.build.extraMetadata.techprepServerUrl, "https://192.168.0.109:5173/");
+  assert.equal(manifest.build.extraMetadata.techprepServerUrl, "https://interviewassistant.in/");
   assert.deepEqual(options.win, ["dir"]);
   assert.equal(options.config.directories.output, "release/custom-build");
   assert.throws(() => buildOptions(["--unknown"], {}), /Usage/);

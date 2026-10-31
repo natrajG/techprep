@@ -1,0 +1,29 @@
+name: Windows Installer (NSIS Setup)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm --prefix frontend/react-web ci
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop test
+      - run: npm --prefix desktop run dist:win
+        env:
+          TECHPREP_SERVER_URL: https://interviewassistant.in/
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: techprep-windows-setup
+          path: desktop/release/TechPrep-Setup.exe
+          if-no-files-found: error
+          retention-days: 7

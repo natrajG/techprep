@@ -38,7 +38,7 @@
       "package.json"
     ],
     "extraMetadata": {
-      "techprepServerUrl": "https://192.168.0.109:5173/"
+      "techprepServerUrl": "https://interviewassistant.in/"
     },
     "win": {
       "icon": "build/icon.ico",
