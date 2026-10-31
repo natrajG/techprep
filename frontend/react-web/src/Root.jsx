@@ -5,6 +5,7 @@ import Login from "./Login";
 import SubscriptionPricing from "./SubscriptionPricing";
 import SupportChatbot from "./SupportChatbot";
 import WebDashboard from "./WebDashboard";
+import AdminDashboard from "./AdminDashboard";
 import {
   checkSession, clearToken, loadConfig, login, readResetToken, requestPasswordReset, resetPassword, signup,
 } from "./auth.mjs";
@@ -48,7 +49,7 @@ export default function Root() {
             } else {
               setSubscription(null);
               // Auto show subscription pricing for newly signed-in users without active plan on web
-              if (!desktop && !renewRequested) {
+              if (!desktop && !renewRequested && !sessionResult.isAdmin) {
                 setShowRenewModal(true);
               }
             }
@@ -176,6 +177,14 @@ export default function Root() {
   // Web browser users: render the Web Dashboard (subscription management, desktop download, instructions)
   // Live listening and HUD overlay are exclusively reserved for the desktop application.
   if (!desktop) {
+    if (isAdmin) {
+      return (
+        <AdminDashboard
+          user={currentUser}
+          onSignOut={signOut}
+        />
+      );
+    }
     return (
       <>
         {showRenewModal && (
@@ -190,13 +199,13 @@ export default function Root() {
         )}
         <WebDashboard
           user={currentUser}
-          isAdmin={isAdmin}
+          isAdmin={false}
           subscription={subscription}
           tokenUsage={tokenUsage}
           onSignOut={signOut}
-          storeUrl={config.store_url}
-          passwordResetEnabled={config.password_reset_enabled}
-          localNetwork={config.local_network}
+          storeUrl={config?.store_url}
+          passwordResetEnabled={config?.password_reset_enabled}
+          localNetwork={config?.local_network}
           onRefreshSubscription={() => setReload((n) => n + 1)}
         />
         <SupportChatbot />

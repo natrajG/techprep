@@ -235,7 +235,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                 payload = {"order_id": order["order_id"], "razorpay_payment_id": payment_id,
                            "razorpay_signature": signature}
                 payment = {"id": payment_id, "order_id": provider_order_id,
-                           "status": "captured", "currency": "INR", "amount": 199900}
+                           "status": "captured", "currency": "INR", "amount": order["amount"] * 100}
                 for invalid in (
                     {"utr_ref": "123456789012"},
                     {**payload, "razorpay_signature": "invalid"},
@@ -260,7 +260,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                             "/api/v1/subscription/status", headers=headers,
                         )).json()["has_active"])
                         payment = {"id": payment_id, "order_id": provider_order_id,
-                                   "status": "captured", "currency": "INR", "amount": 199900}
+                                   "status": "captured", "currency": "INR", "amount": order["amount"] * 100}
                 response = await self.client.post(
                     "/api/v1/subscription/verify", json=payload, headers=headers,
                 )
