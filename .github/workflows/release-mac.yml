@@ -24,7 +24,7 @@ jobs:
       - run: npm --prefix desktop test
       - run: npm --prefix desktop run release:mac
         env:
-          TECHPREP_SERVER_URL: ${{ vars.TECHPREP_SERVER_URL }}
+          TECHPREP_SERVER_URL: https://interviewassistant.in/
           TECHPREP_SIGNER_TEAM_ID: ${{ vars.TECHPREP_SIGNER_TEAM_ID }}
           APPLE_TEAM_ID: ${{ vars.TECHPREP_SIGNER_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

@@ -24,7 +24,7 @@ jobs:
       - run: npm --prefix desktop test
       - run: npm --prefix desktop run release:mac:unsigned
         env:
-          TECHPREP_SERVER_URL: ${{ vars.TECHPREP_SERVER_URL }}
+          TECHPREP_SERVER_URL: https://interviewassistant.in/
       - uses: actions/upload-artifact@v4
         with:
           name: techprep-mac-unsigned-release
