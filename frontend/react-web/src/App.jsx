@@ -14,6 +14,7 @@ import UserProfileModal from "./UserProfileModal";
 import FeedbackModal from "./FeedbackModal";
 import ResumeUploadButton from "./ResumeUploadButton";
 import ProfileOnboarding, { shouldShowProfileOnboarding } from "./ProfileOnboarding";
+import InterviewHistory from "./InterviewHistory";
 import "./overlay.css";
 
 // Vite proxies API requests; FastAPI serves them directly in the desktop app.
@@ -102,6 +103,8 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [subExpired, setSubExpired] = useState(!hasAvailableCall(initialSubscription));
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [followAnswer, setFollowAnswer] = useState(true);
   const [tokenUsage, setTokenUsage] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -241,7 +244,18 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   }, [answer, question, busy, qaLog]);
   function trackAnswerScroll(event) {
     const box = event.currentTarget;
-    followAnswerRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    const isNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+    followAnswerRef.current = isNearBottom;
+    setFollowAnswer(isNearBottom);
+  }
+
+  function scrollToBottom() {
+    const box = answerScrollRef.current;
+    if (box) {
+      box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
+      followAnswerRef.current = true;
+      setFollowAnswer(true);
+    }
   }
   useEffect(() => {
     if (!desktop) return;
@@ -284,7 +298,17 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     lastAnsweredRef.current = "";
     autoAnswerPendingRef.current = null;
     setTranscript("");
-    setQaLog([]);
+  }
+
+  function handleEndSession() {
+    if (!qaLog.length && !question && !answer) return;
+    if (window.confirm("End this interview session and clear the screen? (All questions and answers remain preserved in your Interview History)")) {
+      setQaLog([]);
+      setQuestion("");
+      setAnswer("");
+      clearTranscript();
+      setStatus("Session ended.");
+    }
   }
 
   function isFillerOnly(text) {
@@ -451,10 +475,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     }
     busyRef.current = true;
     setBusy(true);
-    // Archive the previous Q&A pair instead of discarding it, so it stays visible (scrolled
-    // above the new one) rather than being replaced. Keep only the last pair of history so the
-    // log doesn't grow unbounded across a long call.
-    setQaLog((log) => (question && answer ? [...log, { question, answer }].slice(-1) : log));
+    // Archive the previous Q&A pair so it stays visible (scrolled above the new one).
+    // Kept throughout the session so past questions and answers are never erased mid-interview.
+    setQaLog((log) => (question && answer ? [...log, { question, answer, timestamp: Date.now() }] : log));
     setAnswer("");
     setQuestion("");
     try {
@@ -557,6 +580,9 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           {busy ? "Thinking…" : "Answer"} <kbd>↵</kbd>
         </button>
         <button className="hud-pill" onClick={clearTranscript} title="Clear transcript">Clear</button>
+        <button className="hud-pill" onClick={() => setShowHistoryModal(true)} title="Interview Question History & Prep">
+          📚 History
+        </button>
         <span className="hud-spacer" />
         <button
           className="hud-pill hud-profile-pill"
@@ -721,31 +747,92 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       )}
 
       <section className="hud-card hud-qa" ref={answerScrollRef} onScroll={trackAnswerScroll}>
-        <div className="hud-row">
+        <div className="hud-row" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
           <input
-            placeholder="Optional: type the question (otherwise detected from the transcript)"
+            style={{ flex: 1 }}
+            placeholder="Optional: type question or auto-detected from meeting audio…"
             value={manualQ}
             onChange={(e) => setManualQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !busy && getAnswer()}
           />
+          {manualQ && (
+            <button className="hud-pill" onClick={() => getAnswer()} disabled={busy}>
+              Ask
+            </button>
+          )}
+          {(qaLog.length > 0 || question || answer) && (
+            <button
+              className="hud-pill hud-pill--subtle"
+              onClick={handleEndSession}
+              title="Clear desktop session. Saved questions remain in your history."
+              style={{ fontSize: 11, padding: "4px 8px", color: "#fca5a5", whiteSpace: "nowrap" }}
+            >
+              🔄 End Session ({qaLog.length + (question || answer ? 1 : 0)})
+            </button>
+          )}
         </div>
+
+        {/* All prior questions and answers kept throughout this session (scrollable) */}
         {qaLog.map((pair, i) => (
           <div key={i} className="hud-qa-pair hud-qa-pair--archived">
+            <div className="hud-qa-header">
+              <span className="hud-qa-badge">Q{i + 1}</span>
+              {pair.timestamp && (
+                <span className="hud-qa-time">
+                  {new Date(pair.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
             <p className="hud-q"><b>💬 Question:</b> {pair.question}</p>
-            <div className="hud-a"><b>⭐ Answer:</b>
+            <div className="hud-a">
+              <b>⭐ Answer:</b>
               <pre>{splitBold(pair.answer).map((part, j) => part.bold ? <strong key={j}>{part.text}</strong> : part.text)}</pre>
             </div>
           </div>
         ))}
-        {question && <p className="hud-q"><b>💬 Question:</b> {question}</p>}
-        {(answer || busy) && (
-          <div className="hud-a"><b>⭐ Answer:</b>
-            <pre>{splitBold(answer).map((part, i) => part.bold ? <strong key={i}>{part.text}</strong> : part.text)}</pre>
+
+        {/* Current in-progress or latest question */}
+        {(question || answer || busy) && (
+          <div className="hud-qa-pair hud-qa-pair--live">
+            <div className="hud-qa-header">
+              <span className="hud-qa-badge hud-qa-badge--live">Q{qaLog.length + 1} · Live</span>
+            </div>
+            {question && <p className="hud-q"><b>💬 Question:</b> {question}</p>}
+            {(answer || busy) && (
+              <div className="hud-a">
+                <b>⭐ Answer:</b>
+                {answer ? (
+                  <pre>{splitBold(answer).map((part, i) => part.bold ? <strong key={i}>{part.text}</strong> : part.text)}</pre>
+                ) : (
+                  <p className="hud-muted">Thinking and preparing your answer…</p>
+                )}
+              </div>
+            )}
           </div>
         )}
-        {!qaLog.length && !question && !answer && !busy && <p className="hud-muted">Answers appear here.</p>}
+
+        {!qaLog.length && !question && !answer && !busy && (
+          <p className="hud-muted">
+            Answers appear here. All interview questions and answers are kept visible and scrollable throughout your session.
+          </p>
+        )}
         {status && chips.length > 0 && <p className="hud-muted hud-status">{status}</p>}
+
+        {/* Floating jump to latest answer button when user scrolls up to review earlier questions */}
+        {!followAnswer && (qaLog.length > 0 || answer) && (
+          <button className="hud-scroll-down-btn" onClick={scrollToBottom} title="Scroll to latest question">
+            ⬇ Jump to latest answer
+          </button>
+        )}
       </section>
+
+      {showHistoryModal && (
+        <div style={s.modalOverlay} onClick={() => setShowHistoryModal(false)}>
+          <div style={s.modalCard} onClick={(e) => e.stopPropagation()}>
+            <InterviewHistory inModal={true} onClose={() => setShowHistoryModal(false)} />
+          </div>
+        </div>
+      )}
     </main>
   );
 
@@ -764,4 +851,27 @@ const s = {
   ta: { width: "100%", marginTop: 8, padding: 8, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box" },
   transcript: { marginTop: 8, maxHeight: 140, overflowY: "auto", background: "#f8fafc", padding: 8, borderRadius: 8, fontSize: 14 },
   answer: { whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 16, lineHeight: 1.5, margin: 0 },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0, 0, 0, 0.75)",
+    backdropFilter: "blur(6px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 720,
+    background: "#0d1322",
+    border: "1px solid rgba(255, 255, 255, 0.12)",
+    borderRadius: 14,
+    padding: 20,
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+  },
 };

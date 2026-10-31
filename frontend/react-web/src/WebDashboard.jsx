@@ -6,6 +6,7 @@ import AdminPlans from "./AdminPlans";
 import AdminFeedback from "./AdminFeedback";
 import FeedbackModal from "./FeedbackModal";
 import MockInterview from "./MockInterview";
+import InterviewHistory from "./InterviewHistory";
 import { lowCallWarning } from "./subscriptions.mjs";
 
 export default function WebDashboard({
@@ -22,6 +23,7 @@ export default function WebDashboard({
   const [showPricing, setShowPricing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showMockInterview, setShowMockInterview] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const hasActiveSub = subscription && subscription.status === "active";
   const lowCalls = lowCallWarning(subscription);
   const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
@@ -49,6 +51,9 @@ export default function WebDashboard({
               {hasActiveSub ? "Active" : "Inactive"}
             </span>
           </div>
+          <button style={styles.historyNavBtn} onClick={() => setShowHistory(true)}>
+            📚 Question History
+          </button>
           <button style={styles.mockInterviewBtn} onClick={() => setShowMockInterview(true)}>
             ✨ Mock Interview
           </button>
@@ -208,8 +213,27 @@ export default function WebDashboard({
               </div>
             </div>
           </section>
+
+          {/* Interview History Card */}
+          <section style={{ ...styles.card, gridColumn: "1 / -1" }}>
+            <div style={styles.cardHeader}>
+              <h2 style={styles.cardTitle}>📚 Interview History &amp; Question Prep</h2>
+              <button style={styles.actionBtn} onClick={() => setShowHistory(true)}>
+                Full View ↗
+              </button>
+            </div>
+            <InterviewHistory inModal={false} />
+          </section>
         </div>
       </main>
+
+      {showHistory && (
+        <div style={styles.modalOverlay} onClick={() => setShowHistory(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <InterviewHistory inModal={true} onClose={() => setShowHistory(false)} />
+          </div>
+        </div>
+      )}
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
@@ -515,5 +539,38 @@ const styles = {
     color: "#f8fafc",
     flexShrink: 0,
     marginTop: 1,
+  },
+  historyNavBtn: {
+    background: "rgba(99, 102, 241, 0.15)",
+    border: "1px solid rgba(99, 102, 241, 0.35)",
+    color: "#c7d2fe",
+    padding: "7px 14px",
+    borderRadius: 8,
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0, 0, 0, 0.75)",
+    backdropFilter: "blur(6px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 860,
+    background: "#0d1322",
+    border: "1px solid rgba(255, 255, 255, 0.12)",
+    borderRadius: 16,
+    padding: 24,
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
   },
 };

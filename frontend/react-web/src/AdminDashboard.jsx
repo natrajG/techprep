@@ -149,7 +149,8 @@ export default function AdminDashboard({ user, onSignOut }) {
                 ₹{(summary.actual_payment_revenue || 0).toLocaleString()}
               </strong>
               <span style={{ fontSize: 11, color: "#cbd5e1" }}>
-                From {summary.total_paid_orders || 0} verified customer payment{summary.total_paid_orders === 1 ? "" : "s"}
+                From {summary.total_paid_orders || 0} customer payment{summary.total_paid_orders === 1 ? "" : "s"}
+                {summary.platform_fees_deducted > 0 ? ` (excl. ₹${summary.platform_fees_deducted} platform fee)` : ""}
               </span>
             </div>
 
@@ -389,12 +390,19 @@ export default function AdminDashboard({ user, onSignOut }) {
                                     <strong style={{ color: o.is_paid ? "#4ade80" : "#cbd5e1" }}>
                                       ₹{o.amount}
                                     </strong>
+                                    {o.platform_fee > 0 && (
+                                      <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                        (₹{o.gross_amount} gross - ₹{o.platform_fee} fee)
+                                      </div>
+                                    )}
                                   </td>
                                   <td style={styles.subTd}>
                                     {o.is_paid ? (
                                       <span style={styles.verifiedPaidBadge}>💳 Paid (Razorpay)</span>
                                     ) : o.type === "grant" ? (
                                       <span style={styles.grantBadge}>🎁 Admin Grant</span>
+                                    ) : o.type === "test" ? (
+                                      <span style={styles.testBadge}>🧪 Test Order</span>
                                     ) : (
                                       <span style={styles.pendingBadge}>{o.status}</span>
                                     )}

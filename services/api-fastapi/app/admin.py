@@ -20,9 +20,11 @@ def require_admin(user: str = Depends(require_auth)) -> str:
 
 def classify_order(order_id: str, amount: int, status: str, reference: str | None) -> tuple[str, bool]:
     """Returns (order_type, is_paid_revenue).
-    order_type: 'paid' | 'grant' | 'pending'
+    order_type: 'paid' | 'grant' | 'test' | 'pending'
     is_paid_revenue: True only for actual customer payments through gateway
     """
+    if status == "test":
+        return ("test", False)
     oid = (order_id or "").upper()
     ref = (reference or "").upper()
     if oid.startswith("ADM_") or oid.startswith("ADMIN_") or "ADMIN" in ref or "GRANT" in ref:
@@ -32,6 +34,17 @@ def classify_order(order_id: str, amount: int, status: str, reference: str | Non
     if status == "verified":
         return ("grant", False)
     return ("pending", False)
+
+
+def get_subscription_price(plan_id: str | None, charged_amount: int) -> int:
+    """Returns the base subscription revenue credited to our account, excluding
+    the flat ₹2 platform fee that goes to the payment gateway.
+    """
+    if plan_id and plan_id in subscriptions.PLANS:
+        return subscriptions.PLANS[plan_id]["amount"]
+    if charged_amount > subscriptions.PAYMENT_PROCESSING_FEE:
+        return charged_amount - subscriptions.PAYMENT_PROCESSING_FEE
+    return charged_amount
 
 
 def classify_subscription(plan_id: str, plan_name: str, amount: int, transaction_ref: str | None) -> str:
@@ -93,6 +106,8 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
         ).fetchall()
         orders_by_user: dict[str, list[dict[str, Any]]] = {}
         actual_payment_revenue = 0
+        gross_payment_revenue = 0
+        platform_fees_deducted = 0
         total_paid_orders = 0
         total_granted_orders = 0
 
@@ -100,8 +115,13 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
             uname = r[1].lower()
             ref = r[8] or r[9]
             order_type, is_paid = classify_order(r[0], r[4], r[5], ref)
+            sub_price = get_subscription_price(r[2], r[4]) if is_paid else r[4]
+            platform_fee = (r[4] - sub_price) if (is_paid and r[4] > sub_price) else 0
+
             if is_paid:
-                actual_payment_revenue += r[4]
+                actual_payment_revenue += sub_price
+                gross_payment_revenue += r[4]
+                platform_fees_deducted += platform_fee
                 total_paid_orders += 1
             elif order_type == "grant":
                 total_granted_orders += 1
@@ -110,7 +130,9 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
                 "order_id": r[0],
                 "plan_id": r[2],
                 "plan_name": r[3] or r[2],
-                "amount": r[4],
+                "amount": sub_price,
+                "gross_amount": r[4],
+                "platform_fee": platform_fee,
                 "status": r[5],
                 "created_at": r[6],
                 "verified_at": r[7],
@@ -193,6 +215,8 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
         "summary": {
             "total_users": len(user_rows),
             "actual_payment_revenue": actual_payment_revenue,
+            "gross_payment_revenue": gross_payment_revenue,
+            "platform_fees_deducted": platform_fees_deducted,
             "total_paid_orders": total_paid_orders,
             "total_granted_orders": total_granted_orders,
             "total_active_paid_subs": total_active_paid_subs,

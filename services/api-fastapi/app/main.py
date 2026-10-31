@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import admin, auth, downloads, llm, mailer, rate_limit, settings, subscriptions, users
 from . import feedback
+from . import history as history_module
 from . import mock_interview
 from .prompts import EVALUATE_PROMPT, QUESTION_EXTRACT_PROMPT, SYSTEM_PROMPT
 
@@ -66,6 +67,7 @@ app.include_router(subscriptions.router)
 app.include_router(feedback.router)
 app.include_router(mock_interview.router)
 app.include_router(admin.router)
+app.include_router(history_module.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[] if settings.production() else ["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -329,10 +331,14 @@ async def answer(
 
     async def events():
         yield f"event: question\ndata: {json.dumps(question)}\n\n"
+        full_tokens: list[str] = []
+        stream_failed = False
         try:
             async for token in llm.stream_chat(system, question, history, on_usage=record_usage):
+                full_tokens.append(token)
                 yield f"data: {json.dumps(token)}\n\n"
         except Exception as e:  # surface provider errors (quota, auth, network) in the UI
+            stream_failed = True
             if settings.production():
                 logger.exception("LLM provider request failed")
                 text = "[The assistant is temporarily unavailable. Please try again.]"
@@ -341,6 +347,12 @@ async def answer(
                 text = f"[LLM error: {type(e).__name__}: {msg}]"
             yield f"event: error\ndata: {json.dumps(text)}\n\n"
         await record_usage.flush()
+        answered_text = "".join(full_tokens).strip()
+        if not stream_failed and question and answered_text:
+            try:
+                await run_in_threadpool(history_module.save_interview_qa, user, question, answered_text)
+            except Exception:
+                logger.exception("Could not auto-save question and answer to interview history")
         yield "event: done\ndata: \"\"\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")

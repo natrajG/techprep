@@ -86,12 +86,70 @@ body { background: #080a11; }
   backdrop-filter: blur(16px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
-.hud-qa { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
-.hud-q { margin: 10px 0 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); line-height: 1.45; }
-/* A finished Q&A pair kept visible above the live one (instead of being wiped out by it) is
-   dimmed slightly so the current question/answer still reads as the primary focus. */
-.hud-qa-pair--archived { opacity: 0.6; }
-.hud-qa-pair--archived + .hud-q { margin-top: 16px; }
+.hud-qa { flex: 1; overflow-y: auto; overscroll-behavior: contain; position: relative; }
+.hud-qa-pair {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+}
+.hud-qa-pair--archived {
+  opacity: 0.95;
+  border-left: 3px solid #818cf8;
+}
+.hud-qa-pair--live {
+  border-left: 3px solid #10b981;
+  background: rgba(16, 185, 129, 0.04);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.08);
+}
+.hud-qa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.hud-qa-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(129, 140, 248, 0.2);
+  color: #c7d2fe;
+}
+.hud-qa-badge--live {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+.hud-qa-time {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.hud-scroll-down-btn {
+  position: sticky;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 10px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #4f46e5, #06b6d4);
+  color: #ffffff;
+  border: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  z-index: 20;
+}
+.hud-scroll-down-btn:hover {
+  filter: brightness(1.15);
+}
+.hud-q { margin: 6px 0 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); line-height: 1.45; }
 .hud-q b, .hud-a > b { color: #c7d2fe; letter-spacing: 0.02em; }
 .hud-a { line-height: 1.6; }
 .hud-a pre {
