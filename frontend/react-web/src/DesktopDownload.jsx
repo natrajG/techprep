@@ -8,6 +8,13 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [copiedFix, setCopiedFix] = useState(false);
+
+  const copyFixCmd = () => {
+    navigator.clipboard?.writeText("xattr -cr /Applications/TechPrep.app");
+    setCopiedFix(true);
+    setTimeout(() => setCopiedFix(false), 3000);
+  };
 
   async function download(target) {
     setPending(target);
@@ -69,19 +76,46 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
           best-effort capture protection. Sign in again in the app.
           {localNetwork ? " Keep this server running and stay on the same network." : " An internet connection is required."}
         </p>
-        <details className="dd-details">
-          <summary>🛡️ Opening TechPrep on Mac for the first time</summary>
-          <p className="hud-muted">
-            <strong>TechPrep is safe and is not malware.</strong> This release is simply not yet Apple-notarized
-            (that requires a paid Apple Developer account, which we have not purchased yet), so macOS Gatekeeper
-            shows a generic warning that "TechPrep cannot be opened because the developer cannot be verified." This
-            is only because Apple has not reviewed/stamped the app, not because anything is wrong with it, and it
-            does not block installation. In Finder, right-click (or Control-click) TechPrep and choose
-            <strong> Open</strong>, then confirm <strong>Open</strong> in the dialog. You only need to do this once.
-            Alternatively, go to System Settings → Privacy &amp; Security and click <strong>Open Anyway</strong>
-            after the first blocked attempt. Once we buy an Apple Developer account, future downloads will be fully
-            signed and notarized and this warning will no longer appear.
-          </p>
+        <details className="dd-details" open>
+          <summary>🛡️ Opening on macOS ("TechPrep is damaged" Gatekeeper warning)</summary>
+          <div className="hud-muted" style={{ marginTop: "0.5rem", lineHeight: "1.5" }}>
+            <p style={{ margin: "0 0 0.5rem" }}>
+              <strong>TechPrep is safe, clean, and not malware.</strong> Because this is a free community release not yet enrolled in Apple&apos;s $99/year developer program, macOS Gatekeeper blocks it with:
+              <br />
+              <code style={{ display: "inline-block", background: "rgba(239,68,68,0.15)", color: "#fca5a5", padding: "3px 8px", borderRadius: "4px", margin: "6px 0", fontSize: "0.85rem" }}>
+                &ldquo;TechPrep&rdquo; is damaged and can&apos;t be opened. You should move it to the Trash.
+              </code>
+              <br />
+              <strong>Do not move to Trash.</strong> The file is completely intact. Apple shows this message for all unsigned internet downloads.
+            </p>
+            <div style={{ background: "rgba(255,255,255,0.05)", padding: "10px 12px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", marginTop: "8px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "6px", color: "#e2e8f0" }}>⚡ 5-Second Fix (Run once in Terminal):</div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <code style={{ background: "#0f172a", padding: "6px 10px", borderRadius: "4px", color: "#38bdf8", fontSize: "0.85rem", flex: 1, minWidth: "220px" }}>
+                  xattr -cr /Applications/TechPrep.app
+                </code>
+                <button
+                  type="button"
+                  className="dd-btn"
+                  style={{ padding: "4px 12px", fontSize: "0.85rem" }}
+                  onClick={copyFixCmd}
+                >
+                  {copiedFix ? "✓ Copied!" : "📋 Copy Command"}
+                </button>
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: "0.8rem", color: "#94a3b8" }}>
+                1. Drag <strong>TechPrep</strong> to <strong>Applications</strong>.<br />
+                2. Press <kbd>Cmd</kbd> + <kbd>Space</kbd>, type <strong>Terminal</strong>, and press Enter.<br />
+                3. Paste the command above and press Enter. TechPrep will launch immediately!
+              </p>
+              <div style={{ marginTop: "8px", fontSize: "0.8rem" }}>
+                Prefer a double-click fix?{" "}
+                <a href="/Fix-TechPrep.command" download="Fix-TechPrep.command" style={{ color: "#38bdf8", textDecoration: "underline" }}>
+                  Download Fix-TechPrep.command
+                </a>
+              </div>
+            </div>
+          </div>
         </details>
       </div>
 
