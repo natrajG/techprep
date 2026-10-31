@@ -36,12 +36,12 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
           <span className="dd-icon" aria-hidden="true">🪟</span>
           <strong>TechPrep for Windows</strong>
           {localNetwork ? (
-            <button onClick={() => download("windows")} disabled={!!pending}>
+            <button className="dd-btn" onClick={() => download("windows")} disabled={!!pending}>
               {pending === "windows" ? "Downloading Windows app..." : "Download Windows app"}
             </button>
           ) : storeUrl ? (
-            <a className="hud-pill" href={storeUrl} target="_blank" rel="noopener noreferrer">
-              Install from Microsoft Store
+            <a className="dd-btn dd-btn--store" href={storeUrl} target="_blank" rel="noopener noreferrer">
+              🛒 Install from Microsoft Store
             </a>
           ) : <span className="hud-muted">Microsoft Store release coming soon.</span>}
         </div>
@@ -60,7 +60,7 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
           <span className="dd-badge dd-badge--free" title="Free build: not yet code-signed or Apple-notarized">
             Free build
           </span>
-          <button onClick={() => download("mac")} disabled={!!pending}>
+          <button className="dd-btn" onClick={() => download("mac")} disabled={!!pending}>
             {pending === "mac" ? "Downloading Mac app..." : "Download Mac app"}
           </button>
         </div>
@@ -93,7 +93,7 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
             Windows Trusted Root Certification Authorities (Current User). Only trust a CA from a server you know.
             This is not needed for a publicly trusted HTTPS certificate.
           </p>
-          <button onClick={() => download("ca")} disabled={!!pending}>
+          <button className="dd-btn" onClick={() => download("ca")} disabled={!!pending}>
             {pending === "ca" ? "Downloading certificate..." : "Download local CA certificate"}
           </button>
         </details>

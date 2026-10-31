@@ -212,3 +212,28 @@ body { background: #080a11; }
 .dd-details summary::-webkit-details-marker { display: none; }
 .dd-details summary::before { content: "▸ "; color: #818cf8; }
 .dd-details[open] summary::before { content: "▾ "; }
+
+/* Standalone download buttons: work even where no .hud ancestor exists (e.g. the website dashboard). */
+.dd-btn {
+  font: inherit; font-size: 13px; font-weight: 600; color: #f8fafc; cursor: pointer;
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px; padding: 7px 16px;
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  transition: all 0.2s ease;
+}
+.dd-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(165, 180, 252, 0.45);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+}
+.dd-btn:disabled { opacity: 0.55; cursor: default; }
+.dd-btn--store {
+  color: #ffffff; border-color: transparent;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+.dd-btn--store:hover {
+  background: linear-gradient(135deg, #1d4ed8, #0284c7);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
+  border-color: transparent;
+}
