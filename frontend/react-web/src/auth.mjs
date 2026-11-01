@@ -7,6 +7,8 @@ export const login = (api, username, password, fetchImpl, storage) =>
   authenticate("login", api, { username, password }, fetchImpl, storage);
 export const signup = (api, username, password, email, fetchImpl, storage) =>
   authenticate("signup", api, { username, password, email }, fetchImpl, storage);
+export const loginWithGoogle = (api, credential, fetchImpl, storage) =>
+  authenticate("auth/google", api, { credential }, fetchImpl, storage);
 
 // The server keeps one live session per account for the desktop app and one for the website.
 const clientKindHeader = () => (typeof window !== "undefined" && window.desktop ? { "X-Client-Kind": "desktop" } : {});
@@ -30,6 +32,7 @@ async function authenticate(action, api, credentials, fetchImpl = fetch, storage
 
 const DEFAULT_CONFIG = {
   signup_enabled: true, minimum_password: 8, password_reset_enabled: false, local_network: true, store_url: null,
+  google_client_id: null,
 };
 
 async function postJson(api, path, payload, fetchImpl) {
@@ -87,6 +90,8 @@ export async function loadConfig(api, fetchImpl = fetch) {
     local_network: body.local_network === true,
     store_url: typeof body.store_url === "string" && /^https:\/\/apps\.microsoft\.com\/detail\/[A-Za-z0-9]+$/.test(body.store_url)
       ? body.store_url : null,
+    google_client_id: typeof body.google_client_id === "string" && /^[\w.-]+\.apps\.googleusercontent\.com$/.test(body.google_client_id)
+      ? body.google_client_id : null,
   };
 }
 

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import admin, auth, downloads, llm, mailer, rate_limit, settings, subscriptions, users
+from . import admin, auth, downloads, google_auth, llm, mailer, rate_limit, settings, subscriptions, users
 from . import feedback
 from . import history as history_module
 from . import mock_interview
@@ -99,6 +99,10 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=200)
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(min_length=20, max_length=4000)
+
+
 class SignupRequest(LoginRequest):
     email: str = Field(max_length=254)
 
@@ -155,6 +159,7 @@ def public_config() -> dict:
         "local_network": not settings.production(),
         "store_url": "https://apps.microsoft.com/detail/9N36X6C5706B"
         if settings.production() and settings.store_published() else None,
+        "google_client_id": google_auth.client_id() if google_auth.configured() else None,
     }
 
 
@@ -204,6 +209,21 @@ async def signup(req: SignupRequest, request: Request) -> dict:
     except Exception:
         logger.exception("Could not grant free trial")
     return {"token": await new_session_token(req.username, request), "user": req.username}
+
+
+@app.post("/api/v1/auth/google", dependencies=[Depends(rate_limit.auth_attempt)])
+async def login_with_google(req: GoogleLoginRequest, request: Request) -> dict:
+    if not google_auth.configured():
+        raise HTTPException(503, "Google sign-in is not configured")
+    email = await run_in_threadpool(google_auth.verify, req.credential)
+    if email is None:
+        raise HTTPException(401, "Could not verify this Google account")
+    user = await run_in_threadpool(users.get_or_create_google_user, email)
+    try:
+        await run_in_threadpool(subscriptions.grant_free_trial, user)
+    except Exception:
+        logger.exception("Could not grant free trial")
+    return {"token": await new_session_token(user, request), "user": user}
 
 
 RESET_SENT = {"message": "If that email is registered, a reset link has been sent."}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Login({
   onSubmit,
@@ -12,6 +12,8 @@ export default function Login({
   wrongPasswordHint,
   minimumPassword = 8,
   isModal = false,
+  googleClientId,
+  onGoogleSignIn,
 }) {
   const [mode, setMode] = useState(resetToken ? "reset" : initialMode); // signin | signup | forgot | reset
   const [confirm, setConfirm] = useState("");
@@ -21,8 +23,44 @@ export default function Login({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const googleButtonRef = useRef(null);
   const creating = mode === "signup";
   const needsConfirm = creating || mode === "reset";
+  const showGoogleButton = googleClientId && onGoogleSignIn && (mode === "signin" || mode === "signup");
+
+  // Renders Google's own "Sign in with Google" button once its script has loaded.
+  useEffect(() => {
+    if (!showGoogleButton || !googleButtonRef.current) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    function tryRender() {
+      if (cancelled) return;
+      if (!window.google?.accounts?.id) {
+        if (++attempts < 50) setTimeout(tryRender, 100);
+        return;
+      }
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async ({ credential }) => {
+          setBusy(true);
+          setError("");
+          try {
+            await onGoogleSignIn(credential);
+          } catch (e) {
+            setError(e.message);
+            setBusy(false);
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "filled_black", size: "large", width: 304, text: creating ? "signup_with" : "signin_with",
+      });
+    }
+    tryRender();
+    return () => { cancelled = true; };
+  }, [showGoogleButton, googleClientId, creating]);
+
 
   function switchMode(next) {
     setMode(next);
@@ -86,6 +124,16 @@ export default function Login({
           </>
         ) : (
           <>
+            {showGoogleButton && (
+              <>
+                <div ref={googleButtonRef} style={styles.googleButtonSlot}></div>
+                <div style={styles.dividerRow}>
+                  <span style={styles.dividerLine}></span>
+                  <span style={{ color: "#64748b", fontSize: 12 }}>or</span>
+                  <span style={styles.dividerLine}></span>
+                </div>
+              </>
+            )}
             {(mode === "signin" || mode === "signup") && (
               <label style={styles.label}>Username
                 <input style={styles.input} value={username} autoComplete="username" autoFocus required
@@ -201,6 +249,9 @@ const styles = {
   },
   brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
   logoDot: { width: 8, height: 8, borderRadius: "50%", background: "#4f46e5", boxShadow: "0 0 10px #6366f1" },
+  googleButtonSlot: { display: "flex", justifyContent: "center", marginBottom: 14, minHeight: 40 },
+  dividerRow: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 },
+  dividerLine: { flex: 1, height: 1, background: "rgba(255, 255, 255, 0.12)" },
   label: { display: "block", fontSize: 13, marginBottom: 14, color: "#cbd5e1" },
   input: {
     display: "block",

@@ -7,7 +7,8 @@ import SupportChatbot from "./SupportChatbot";
 import WebDashboard from "./WebDashboard";
 import AdminDashboard from "./AdminDashboard";
 import {
-  checkSession, clearToken, loadConfig, login, readResetToken, requestPasswordReset, resetPassword, signup,
+  checkSession, clearToken, loadConfig, login, loginWithGoogle, readResetToken, requestPasswordReset,
+  resetPassword, signup,
 } from "./auth.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 
@@ -96,6 +97,12 @@ export default function Root() {
     setReload((value) => value + 1);
   }
 
+  async function signInWithGoogle(credential) {
+    await loginWithGoogle(API, credential);
+    setAuthView(null);
+    setReload((value) => value + 1);
+  }
+
   function finishReset() {
     history.replaceState(null, "", location.pathname + location.search);
     setResetToken(null);
@@ -146,6 +153,8 @@ export default function Root() {
               onBack={() => setAuthView(null)}
               minimumPassword={config?.minimum_password || 8}
               isModal={true}
+              googleClientId={config?.google_client_id}
+              onGoogleSignIn={config?.google_client_id ? signInWithGoogle : undefined}
               {...passwordReset}
             />
           )}

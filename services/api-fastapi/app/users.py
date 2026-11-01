@@ -156,6 +156,32 @@ def verify_user(username: str, password: str) -> str | None:
     return stored_name if row and ok else None
 
 
+def _username_candidates(email: str):
+    base = re.sub(r"[^A-Za-z0-9_.-]", "", email.split("@", 1)[0])[:28] or "user"
+    yield base
+    for _ in range(20):
+        yield f"{base}-{secrets.token_hex(3)}"
+
+
+def get_or_create_google_user(email: str) -> str:
+    """Finds the account linked to this Google email, or creates one with a random password.
+
+    Google already verified the email's ownership, so no password is needed for this account;
+    a random, unguessable one is stored anyway since the schema requires a hash.
+    """
+    existing = get_user_by_email(email)
+    if existing:
+        return existing
+    for username in _username_candidates(email):
+        if USERNAME_RE.match(username) and create_user(username, secrets.token_urlsafe(32), email):
+            return username
+    # Another request may have created the account between the check above and now (race).
+    existing = get_user_by_email(email)
+    if existing:
+        return existing
+    raise RuntimeError("Could not allocate a username for this Google account")
+
+
 def get_email(username: str) -> str | None:
     with connect() as conn:
         row = conn.execute("SELECT email FROM users WHERE username = ?", (username,)).fetchone()
