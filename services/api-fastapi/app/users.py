@@ -43,6 +43,30 @@ def _users_schema(conn: sqlite3.Connection) -> None:
     if "email" not in {column[1] for column in conn.execute("PRAGMA table_info(users)")}:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL")
+    if "created_at" not in {column[1] for column in conn.execute("PRAGMA table_info(users)")}:
+        conn.execute("ALTER TABLE users ADD COLUMN created_at INTEGER")
+        # Accounts created before this column existed get a best-effort timestamp: the
+        # earliest activity on record for that username, or now if nothing else is known.
+        # subscriptions/payment_orders may not exist yet on a brand-new database (their own
+        # schema hooks run after this one), so only reference them if already present.
+        existing_tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        fallback_parts = []
+        if "subscriptions" in existing_tables:
+            fallback_parts.append(
+                "(SELECT MIN(created_at) FROM subscriptions WHERE subscriptions.username = users.username COLLATE NOCASE)"
+            )
+        if "payment_orders" in existing_tables:
+            fallback_parts.append(
+                "(SELECT MIN(created_at) FROM payment_orders WHERE payment_orders.username = users.username COLLATE NOCASE)"
+            )
+        fallback_parts.append("?")
+        # COALESCE needs at least two arguments, so pad a lone fallback.
+        if len(fallback_parts) == 1:
+            fallback_parts.insert(0, "NULL")
+        conn.execute(
+            f"UPDATE users SET created_at = COALESCE({', '.join(fallback_parts)}) WHERE created_at IS NULL",
+            (int(time.time()),),
+        )
     _ensure_token_usage(conn)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires INTEGER NOT NULL)"
@@ -138,8 +162,8 @@ def create_user(username: str, password: str, email: str | None = None) -> bool:
     try:
         with connect() as conn:
             conn.execute(
-                "INSERT INTO users (username, salt, hash, email) VALUES (?, ?, ?, ?)",
-                (username, salt, _hash(password, salt), email),
+                "INSERT INTO users (username, salt, hash, email, created_at) VALUES (?, ?, ?, ?, ?)",
+                (username, salt, _hash(password, salt), email, int(time.time())),
             )
     except sqlite3.IntegrityError:
         return False

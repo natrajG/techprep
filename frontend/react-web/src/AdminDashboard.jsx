@@ -13,6 +13,7 @@ export default function AdminDashboard({ user, onSignOut }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [expandedUser, setExpandedUser] = useState(null);
 
   // Grant Form State
@@ -113,6 +114,11 @@ export default function AdminDashboard({ user, onSignOut }) {
     const q = search.toLowerCase();
     return u.username.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q));
   });
+
+  const USERS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pagedUsers = filteredUsers.slice((safePage - 1) * USERS_PER_PAGE, safePage * USERS_PER_PAGE);
 
   return (
     <div style={styles.container}>
@@ -231,7 +237,10 @@ export default function AdminDashboard({ user, onSignOut }) {
                   type="text"
                   placeholder="Search username or email…"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
                   style={styles.searchInput}
                 />
                 <button style={styles.refreshBtn} onClick={loadUsers} disabled={loading}>
@@ -252,6 +261,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                   <thead>
                     <tr>
                       <th style={styles.th}>User / Email</th>
+                      <th style={styles.th}>Joined</th>
                       <th style={styles.th}>Actual Paid (₹)</th>
                       <th style={styles.th}>Active Subscription</th>
                       <th style={styles.th}>AI Token Usage</th>
@@ -260,7 +270,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((u) => {
+                    {pagedUsers.map((u) => {
                       const active = u.active_subscription;
                       const isExpanded = expandedUser === u.username;
                       const paidAmt = u.paid_revenue || 0;
@@ -269,6 +279,11 @@ export default function AdminDashboard({ user, onSignOut }) {
                           <td style={styles.td}>
                             <div style={{ fontWeight: 600, color: "#f8fafc" }}>{u.username}</div>
                             <div style={{ fontSize: 12, color: "#94a3b8" }}>{u.email || "No email"}</div>
+                          </td>
+                          <td style={styles.td}>
+                            <span style={{ fontSize: 13, color: "#cbd5e1" }}>
+                              {u.created_at ? new Date(u.created_at * 1000).toLocaleDateString() : "—"}
+                            </span>
                           </td>
                           <td style={styles.td}>
                             {paidAmt > 0 ? (
@@ -339,6 +354,28 @@ export default function AdminDashboard({ user, onSignOut }) {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {filteredUsers.length > 0 && totalPages > 1 && (
+              <div style={styles.paginationBar}>
+                <button
+                  style={{ ...styles.pageBtn, opacity: safePage <= 1 ? 0.5 : 1, cursor: safePage <= 1 ? "not-allowed" : "pointer" }}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                >
+                  ← Prev
+                </button>
+                <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                  Page {safePage} of {totalPages} ({filteredUsers.length} users)
+                </span>
+                <button
+                  style={{ ...styles.pageBtn, opacity: safePage >= totalPages ? 0.5 : 1, cursor: safePage >= totalPages ? "not-allowed" : "pointer" }}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                >
+                  Next →
+                </button>
               </div>
             )}
 
@@ -687,6 +724,13 @@ const styles = {
     fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   tableWrapper: { overflowX: "auto" },
+  paginationBar: {
+    display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 16, padding: "10px 0",
+  },
+  pageBtn: {
+    padding: "7px 14px", borderRadius: 8, border: "1px solid #475569", background: "#151b2b",
+    color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+  },
   table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
   th: { padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#94a3b8", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid rgba(255, 255, 255, 0.05)" },

@@ -81,7 +81,7 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
     with users.connect() as conn:
         conn.row_factory = None
         user_rows = conn.execute(
-            "SELECT username, email FROM users ORDER BY username COLLATE NOCASE ASC"
+            "SELECT username, email, created_at FROM users ORDER BY created_at DESC"
         ).fetchall()
 
         # Token usage lookup
@@ -175,7 +175,7 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
     total_active_free_subs = 0
     total_tokens_burned = 0
 
-    for uname, email in user_rows:
+    for uname, email, created_at in user_rows:
         uname_lower = uname.lower()
         active_sub = subscriptions.get_active_subscription(uname)
         if active_sub:
@@ -202,6 +202,7 @@ def list_users(admin: str = Depends(require_admin)) -> dict:
         result_users.append({
             "username": uname,
             "email": email,
+            "created_at": created_at,
             "paid_revenue": user_paid_revenue,
             "granted_orders_count": user_granted_count,
             "active_subscription": active_sub,
