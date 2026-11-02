@@ -189,41 +189,48 @@ export default function WebDashboard({
             </section>
           )}
 
-          {/* Desktop App Download Card */}
-          <section style={styles.card}>
-            <div style={styles.cardHeader}>
-              <h2 style={styles.cardTitle}>🖥️ Install TechPrep Desktop App</h2>
-            </div>
-            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
-              Install the stealth client once on your machine. Future app updates occur automatically.
-            </p>
-            <DesktopDownload localNetwork={localNetwork} storeUrl={storeUrl} />
-            <div style={styles.instructionList}>
-              <div style={styles.instructionStep}>
-                <span style={styles.stepNum}>1</span>
-                <span>Install from Microsoft Store or local bundle above.</span>
+          {/* Desktop App Download + Interview History share a row to use up the leftover width */}
+          <div style={styles.installerHistoryRow}>
+            <section style={{ ...styles.card, ...styles.installerCard }}>
+              <div style={styles.cardHeader}>
+                <h2 style={styles.cardTitle}>🖥️ Install TechPrep Desktop App</h2>
               </div>
-              <div style={styles.instructionStep}>
-                <span style={styles.stepNum}>2</span>
-                <span>Open TechPrep on Windows/macOS and sign in with this account.</span>
+              <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
+                Install the stealth client once on your machine. Future app updates occur automatically.
+              </p>
+              <DesktopDownload localNetwork={localNetwork} storeUrl={storeUrl} />
+              <div style={styles.instructionList}>
+                <div style={styles.instructionStep}>
+                  <span style={styles.stepNum}>1</span>
+                  <span>Install from Microsoft Store or local bundle above.</span>
+                </div>
+                <div style={styles.instructionStep}>
+                  <span style={styles.stepNum}>2</span>
+                  <span>Open TechPrep on Windows/macOS and sign in with this account.</span>
+                </div>
+                <div style={styles.instructionStep}>
+                  <span style={styles.stepNum}>3</span>
+                  <span>The floating transparent HUD stays always-on-top and 100% invisible to interview screen sharing.</span>
+                </div>
               </div>
-              <div style={styles.instructionStep}>
-                <span style={styles.stepNum}>3</span>
-                <span>The floating transparent HUD stays always-on-top and 100% invisible to interview screen sharing.</span>
-              </div>
-            </div>
-          </section>
+              <img
+                src="/images/restore-desktop-app.webp"
+                alt="Press Ctrl + Shift + T at any time to bring the TechPrep desktop app back to the foreground from a minimized or background state."
+                style={styles.restoreTipImage}
+                loading="lazy"
+              />
+            </section>
 
-          {/* Interview History Card */}
-          <section style={{ ...styles.card, gridColumn: "1 / -1" }}>
-            <div style={styles.cardHeader}>
-              <h2 style={styles.cardTitle}>📚 Interview History &amp; Question Prep</h2>
-              <button style={styles.actionBtn} onClick={() => setShowHistory(true)}>
-                Full View ↗
-              </button>
-            </div>
-            <InterviewHistory inModal={false} />
-          </section>
+            <section style={{ ...styles.card, ...styles.historyCard }}>
+              <div style={styles.cardHeader}>
+                <h2 style={styles.cardTitle}>📚 Interview History &amp; Question Prep</h2>
+                <button style={styles.actionBtn} onClick={() => setShowHistory(true)}>
+                  Full View ↗
+                </button>
+              </div>
+              <InterviewHistory inModal={false} />
+            </section>
+          </div>
         </div>
       </main>
 
@@ -405,6 +412,26 @@ const styles = {
     borderRadius: 16,
     padding: 24,
     backdropFilter: "blur(12px)",
+  },
+  installerHistoryRow: {
+    gridColumn: "1 / -1",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 24,
+    alignItems: "flex-start",
+  },
+  installerCard: {
+    flex: "1 1 360px",
+  },
+  historyCard: {
+    flex: "2 1 420px",
+  },
+  restoreTipImage: {
+    width: "100%",
+    maxWidth: 480,
+    borderRadius: 12,
+    marginTop: 16,
+    display: "block",
   },
   cardHeader: {
     display: "flex",
