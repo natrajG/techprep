@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import InteractiveDemo from "./InteractiveDemo";
 import SubscriptionPricing from "./SubscriptionPricing";
 import { fetchPlans } from "./subscriptions.mjs";
+import { fetchRatingSummary } from "./ratings.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -10,12 +11,14 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
   const [showPricing, setShowPricing] = useState(false);
   const [plans, setPlans] = useState([]);
   const [planError, setPlanError] = useState("");
+  const [ratingSummary, setRatingSummary] = useState(null);
   const hourly = plans.find((plan) => plan.id === "hourly_call");
   const monthly = plans.find((plan) => plan.id === "monthly");
 
   useEffect(() => {
     fetchPlans(API).then((data) => setPlans(data.plans))
       .catch((error) => setPlanError(`Cannot load prices: ${error.message}`));
+    fetchRatingSummary(API).then(setRatingSummary).catch(() => {});
   }, []);
 
   return (
@@ -78,6 +81,15 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
             <strong>100%</strong>
             <span>Screen-Share Invisible (Win/Mac)</span>
           </div>
+          {ratingSummary && ratingSummary.count > 0 && (
+            <>
+              <div style={styles.statDivider}></div>
+              <div style={styles.statItem}>
+                <strong>⭐ {ratingSummary.average}/5</strong>
+                <span>Rated by {ratingSummary.count}+ users</span>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

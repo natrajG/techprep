@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import admin, auth, downloads, google_auth, llm, mailer, rate_limit, settings, subscriptions, users
+from . import admin, auth, downloads, google_auth, llm, mailer, rate_limit, ratings, settings, subscriptions, users
 from . import feedback
 from . import history as history_module
 from . import mock_interview
@@ -68,6 +68,7 @@ app.include_router(feedback.router)
 app.include_router(mock_interview.router)
 app.include_router(admin.router)
 app.include_router(history_module.router)
+app.include_router(ratings.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[] if settings.production() else ["http://localhost:5173", "http://127.0.0.1:5173"],

@@ -12,6 +12,7 @@ import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning, sendHear
 import SubscriptionPricing from "./SubscriptionPricing";
 import UserProfileModal from "./UserProfileModal";
 import FeedbackModal from "./FeedbackModal";
+import RatingPopup from "./RatingPopup";
 import ResumeUploadButton from "./ResumeUploadButton";
 import ProfileOnboarding, { shouldShowProfileOnboarding } from "./ProfileOnboarding";
 import InterviewHistory from "./InterviewHistory";
@@ -57,6 +58,8 @@ const hasAvailableCall = (subscription) =>
   subscription?.status === "active" &&
   (subscription.calls_remaining === null || subscription.calls_remaining > 0 ||
     subscription.call_time_remaining_seconds > 0);
+// Don't re-ask for a few days after the user dismisses the rating popup without rating.
+const RATING_SNOOZE_MS = 3 * 24 * 3600 * 1000;
 
 export default function App({ onSignOut, currentUser = null, isAdmin = false, initialSubscription = null, localNetwork = true, storeUrl = null }) {
   const [resume, setResume] = useState(load("resume"));
@@ -98,6 +101,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [captureError, setCaptureError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [ratingPopup, setRatingPopup] = useState(null); // null | "trial" | "paid"
   const [showProfileOnboarding, setShowProfileOnboarding] = useState(() => shouldShowProfileOnboarding());
   const [subscription, setSubscription] = useState(initialSubscription);
   const [subExpired, setSubExpired] = useState(!hasAvailableCall(initialSubscription));
@@ -126,6 +130,20 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       })
       .catch(() => {});
   }, []);
+  // Offers the rating popup once per plan "context" (trial vs paid), skipping users who
+  // already rated, or who recently dismissed it without rating.
+  function maybeOfferRating(planId) {
+    if (!planId) return;
+    const context = planId === "free_trial" ? "trial" : "paid";
+    if (localStorage.getItem(`techprep_rated_${context}`)) return;
+    const snoozedAt = Number(localStorage.getItem(`techprep_rating_snooze_${context}`) || 0);
+    if (snoozedAt && Date.now() - snoozedAt < RATING_SNOOZE_MS) return;
+    setRatingPopup(context);
+  }
+  function closeRatingPopup() {
+    if (ratingPopup) localStorage.setItem(`techprep_rating_snooze_${ratingPopup}`, String(Date.now()));
+    setRatingPopup(null);
+  }
   // Heartbeat must resolve BEFORE the status refresh: otherwise a status check that lands
   // first (e.g. right after reopening the app post-disconnect) could see the un-extended,
   // already-elapsed valid_until and mark the subscription expired before the heartbeat gets
@@ -138,7 +156,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   useEffect(checkIn, [checkIn]);
   // A call is counted when it starts, so reload the balance once the user stops listening.
   useEffect(() => {
-    if (wasListening.current && !listening) refreshSubscription();
+    if (wasListening.current && !listening) {
+      refreshSubscription();
+      maybeOfferRating(subscription?.plan_id);
+    }
     wasListening.current = listening;
   }, [listening, refreshSubscription]);
   // Poll while a single-call window (hourly plan or free trial) is running so the "time left"
@@ -736,6 +757,13 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       )}
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {ratingPopup && (
+        <RatingPopup
+          context={ratingPopup}
+          onClose={closeRatingPopup}
+          onSubmitted={() => localStorage.setItem(`techprep_rated_${ratingPopup}`, "1")}
+        />
+      )}
       {showProfileOnboarding && (
         <ProfileOnboarding
           resume={resume}
