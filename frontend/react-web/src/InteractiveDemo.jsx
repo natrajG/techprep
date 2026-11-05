@@ -1,116 +1,23 @@
-import { useState } from "react";
-
 export default function InteractiveDemo({ onClose, onGoToPricing }) {
-  const [activeStep, setActiveStep] = useState(0);
-
-  const steps = [
-    {
-      title: "1. Stealth Floating Overlay",
-      badge: "Zero Desktop Clutter",
-      desc: "TechPrep floats above your video call (Zoom, Teams, Google Meet, or browser tab) with a glass-style card and always-on-top positioning.",
-      highlight: "The desktop app asks Windows and macOS to leave its window out of screen capture. This is best effort and depends on the sharing tool, so check your own sharing preview.",
-    },
-    {
-      title: "2. System Audio Capture",
-      badge: "Direct Loopback",
-      desc: "Press Listen to capture the sound playing through your computer, such as the other person's voice on a Teams or Meet call. Only system audio is recorded, never your microphone, and speech is transcribed as it arrives.",
-      highlight: "Silent stretches are detected locally, so quiet audio isn't sent for transcription.",
-    },
-    {
-      title: "3. Automatic Answers",
-      badge: "Hands-Free",
-      desc: "When the speaker pauses for about two seconds, TechPrep answers automatically, with no need to press Answer. Your loaded Resume and Job Description keep the talking points relevant to you.",
-      highlight: "Answers stream in token by token, and Answer or a typed question is still there when you want manual control.",
-    },
-    {
-      title: "4. Easy to Read",
-      badge: "Clear Layout",
-      desc: "The control bar stays pinned while only the answer card scrolls, and it follows the answer as it streams. Background opacity is adjustable but never so low that the text becomes unreadable.",
-      highlight: "Scroll up to re-read an earlier part, and the view stops following until the next answer.",
-    },
-  ];
-
   return (
     <div style={styles.overlayBackdrop}>
       <div style={styles.modal}>
         <div style={styles.header}>
-          <div style={styles.badge}>INTERACTIVE WALKTHROUGH</div>
-          <h2 style={styles.title}>Experience TechPrep Luxury HUD</h2>
+          <div style={styles.badge}>PRODUCT WALKTHROUGH</div>
+          <h2 style={styles.title}>See TechPrep in Action</h2>
           <p style={styles.subtitle}>
-            See how TechPrep listens to your call's audio and drafts answers in real time. Use it where AI assistance is allowed, such as practice and mock interviews.
+            Watch how TechPrep listens to your call's audio and drafts answers in real time. Use it where AI assistance is allowed, such as practice and mock interviews.
           </p>
         </div>
 
-        <div style={styles.stepTabs}>
-          {steps.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => setActiveStep(idx)}
-              style={{
-                ...styles.tabBtn,
-                ...(activeStep === idx ? styles.tabBtnActive : {}),
-              }}
-            >
-              {s.title}
-            </button>
-          ))}
-        </div>
-
-        <div style={styles.demoStage}>
-          {/* Mock Video Call Screen */}
-          <div style={styles.mockCallWindow}>
-            <div style={styles.mockCallBar}>
-              <span style={styles.mockDot}></span>
-              <span style={styles.mockDot}></span>
-              <span style={styles.mockDot}></span>
-              <span style={styles.mockTitle}>Video Interview Call · Google Meet / Zoom</span>
-            </div>
-            <div style={styles.mockInterviewArea}>
-              <div style={styles.mockAvatar}>Interviewer</div>
-              <div style={styles.mockWaveform}>
-                <span style={styles.waveBar}></span>
-                <span style={{ ...styles.waveBar, height: 18 }}></span>
-                <span style={{ ...styles.waveBar, height: 26 }}></span>
-                <span style={{ ...styles.waveBar, height: 14 }}></span>
-                <span style={{ ...styles.waveBar, height: 22 }}></span>
-                <span style={{ ...styles.waveBar, height: 10 }}></span>
-              </div>
-              <div style={styles.mockSpeechBubble}>
-                "Can you walk me through how you optimize database connection pools under high concurrency?"
-              </div>
-            </div>
-
-            {/* Simulated Floating Glass HUD */}
-            <div style={styles.simulatedHud}>
-              <div style={styles.simulatedBar}>
-                <span style={styles.hudLiveDot}></span>
-                <strong style={{ fontSize: 12, color: "#fff" }}>TECHPREP HUD</strong>
-                <span style={styles.hudBadge}>Listening · auto-answer</span>
-              </div>
-              <div style={styles.simulatedBody}>
-                <div style={styles.hudPrompt}>
-                  <span style={{ color: "#a5b4fc", fontSize: 11 }}>Q: Database connection pools under concurrency</span>
-                </div>
-                <div style={styles.hudAnswer}>
-                  <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: "#e2e8f0" }}>
-                    <strong>Key Points:</strong><br />
-                    • Set <code>max_connections</code> bounded to CPU cores: <code>pool = 2 × cores + disk_spindle</code>.<br />
-                    • Use HikariCP / async pgpool with health checks and aggressive lease timeouts.<br />
-                    • Prevent pool exhaustion via circuit breaker & token-bucket queues.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.infoCard}>
-            <div style={styles.infoBadge}>{steps[activeStep].badge}</div>
-            <h3 style={styles.infoTitle}>{steps[activeStep].title}</h3>
-            <p style={styles.infoDesc}>{steps[activeStep].desc}</p>
-            <div style={styles.infoHighlight}>
-              ✨ <strong>Good to know:</strong> {steps[activeStep].highlight}
-            </div>
-          </div>
+        <div style={styles.videoWrap}>
+          <video
+            style={styles.video}
+            src="/demo/techprep-demo.mp4"
+            controls
+            autoPlay
+            playsInline
+          />
         </div>
 
         <div style={styles.footer}>
@@ -174,159 +81,18 @@ const styles = {
   },
   title: { margin: "0 0 6px", fontSize: 28, fontWeight: 700, letterSpacing: -0.5 },
   subtitle: { margin: "0 auto", fontSize: 14, color: "#94a3b8", maxWidth: 600, lineHeight: 1.5 },
-  stepTabs: { display: "flex", gap: 8, justifyContent: "center", marginBottom: 20, flexWrap: "wrap" },
-  tabBtn: {
-    padding: "8px 16px",
-    background: "rgba(255, 255, 255, 0.05)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 999,
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
-  tabBtnActive: {
-    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-    color: "#ffffff",
-    borderColor: "rgba(165, 180, 252, 0.4)",
-    boxShadow: "0 0 15px rgba(99, 102, 241, 0.4)",
-  },
-  demoStage: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 16,
-    alignItems: "stretch",
-    marginBottom: 24,
-  },
-  mockCallWindow: {
+  videoWrap: {
     background: "#090b10",
     borderRadius: 14,
     border: "1px solid rgba(255, 255, 255, 0.1)",
-    position: "relative",
     overflow: "hidden",
-    minHeight: 280,
-    display: "flex",
-    flexDirection: "column",
+    marginBottom: 24,
   },
-  mockCallBar: {
-    padding: "8px 12px",
-    background: "rgba(255, 255, 255, 0.04)",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
-  },
-  mockDot: { width: 8, height: 8, borderRadius: "50%", background: "#475569" },
-  mockTitle: { fontSize: 11, color: "#64748b", marginLeft: 6 },
-  mockInterviewArea: {
-    flex: 1,
-    padding: 16,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-  },
-  mockAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #334155, #1e293b)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 12,
-    color: "#cbd5e1",
-    fontWeight: 600,
-    border: "2px solid #475569",
-    marginBottom: 10,
-  },
-  mockWaveform: { display: "flex", alignItems: "center", gap: 3, marginBottom: 12 },
-  waveBar: {
-    width: 3,
-    height: 12,
-    background: "#38bdf8",
-    borderRadius: 2,
-    animation: "hud-pulse 1s infinite",
-  },
-  mockSpeechBubble: {
-    background: "rgba(30, 41, 59, 0.8)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    padding: "8px 14px",
-    borderRadius: 10,
-    fontSize: 12,
-    color: "#cbd5e1",
-    maxWidth: 280,
-    lineHeight: 1.4,
-  },
-  simulatedHud: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
-    width: "72%",
-    background: "rgba(20, 24, 36, 0.88)",
-    backdropFilter: "blur(12px)",
-    border: "1px solid rgba(129, 140, 248, 0.35)",
-    boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.2)",
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  simulatedBar: {
-    padding: "6px 10px",
-    background: "rgba(99, 102, 241, 0.15)",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  hudLiveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-    background: "#22c55e",
-    boxShadow: "0 0 6px #22c55e",
-  },
-  hudBadge: {
-    marginLeft: "auto",
-    fontSize: 9,
-    padding: "2px 6px",
-    borderRadius: 4,
-    background: "rgba(34, 197, 94, 0.2)",
-    color: "#4ade80",
-  },
-  simulatedBody: { padding: 10 },
-  hudPrompt: { marginBottom: 6, borderBottom: "1px solid rgba(255, 255, 255, 0.06)", paddingBottom: 4 },
-  hudAnswer: { maxHeight: 110, overflow: "hidden" },
-  infoCard: {
-    background: "rgba(255, 255, 255, 0.03)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 14,
-    padding: 20,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-  },
-  infoBadge: {
-    alignSelf: "flex-start",
-    fontSize: 11,
-    color: "#38bdf8",
-    background: "rgba(56, 189, 248, 0.12)",
-    padding: "3px 10px",
-    borderRadius: 6,
-    fontWeight: 700,
-    marginBottom: 10,
-  },
-  infoTitle: { margin: "0 0 8px", fontSize: 20, color: "#f8fafc" },
-  infoDesc: { margin: "0 0 16px", fontSize: 13.5, color: "#94a3b8", lineHeight: 1.6 },
-  infoHighlight: {
-    background: "rgba(30, 27, 75, 0.6)",
-    border: "1px solid rgba(129, 140, 248, 0.2)",
-    borderRadius: 8,
-    padding: "10px 14px",
-    fontSize: 12.5,
-    color: "#c7d2fe",
-    lineHeight: 1.5,
+  video: {
+    display: "block",
+    width: "100%",
+    maxHeight: "60vh",
+    background: "#000",
   },
   footer: { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 },
   secondaryBtn: {
