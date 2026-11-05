@@ -178,6 +178,8 @@ export default function Root() {
         onSignUp={undefined}
         wrongPasswordHint="Forgot it? Reset your password on the website."
         minimumPassword={config?.minimum_password || 8}
+        googleClientId={config?.google_client_id}
+        onGoogleSignIn={config?.google_client_id ? signInWithGoogle : undefined}
       />
     );
   }
