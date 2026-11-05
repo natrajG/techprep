@@ -65,11 +65,11 @@ test("signup stores the token, and surfaces server validation errors", async () 
 
 test("server config: production values, legacy servers, and failures", async () => {
   const { loadConfig } = await auth;
-  assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B", google_client_id: "123-abc.apps.googleusercontent.com" })),
-    { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B", google_client_id: "123-abc.apps.googleusercontent.com" });
-  assert.deepEqual(await loadConfig("", reply(404)), { signup_enabled: true, minimum_password: 8, password_reset_enabled: false, local_network: true, store_url: null, google_client_id: null });
+  assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B", google_client_id: "123-abc.apps.googleusercontent.com", google_desktop_signin: true })),
+    { signup_enabled: false, minimum_password: 12, password_reset_enabled: true, local_network: false, store_url: "https://apps.microsoft.com/detail/9N36X6C5706B", google_client_id: "123-abc.apps.googleusercontent.com", google_desktop_signin: true });
+  assert.deepEqual(await loadConfig("", reply(404)), { signup_enabled: true, minimum_password: 8, password_reset_enabled: false, local_network: true, store_url: null, google_client_id: null, google_desktop_signin: false });
   assert.deepEqual(await loadConfig("", reply(200, { signup_enabled: "yes", minimum_password: "x" })),
-    { signup_enabled: false, minimum_password: 8, password_reset_enabled: false, local_network: false, store_url: null, google_client_id: null });
+    { signup_enabled: false, minimum_password: 8, password_reset_enabled: false, local_network: false, store_url: null, google_client_id: null, google_desktop_signin: false });
   assert.equal((await loadConfig("", reply(200, { store_url: "javascript:alert(1)" }))).store_url, null);
   assert.equal((await loadConfig("", reply(200, { google_client_id: "not-a-real-client-id" }))).google_client_id, null);
   await assert.rejects(loadConfig("", reply(500)), /500/);

@@ -2,13 +2,14 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -161,6 +162,7 @@ def public_config() -> dict:
         "store_url": "https://apps.microsoft.com/detail/9N36X6C5706B"
         if settings.production() and settings.store_published() else None,
         "google_client_id": google_auth.client_id() if google_auth.configured() else None,
+        "google_desktop_signin": google_auth.desktop_flow_configured(),
     }
 
 
@@ -219,6 +221,108 @@ async def login_with_google(req: GoogleLoginRequest, request: Request) -> dict:
     email = await run_in_threadpool(google_auth.verify, req.credential)
     if email is None:
         raise HTTPException(401, "Could not verify this Google account")
+    user = await run_in_threadpool(users.get_or_create_google_user, email)
+    try:
+        await run_in_threadpool(subscriptions.grant_free_trial, user)
+    except Exception:
+        logger.exception("Could not grant free trial")
+    return {"token": await new_session_token(user, request), "user": user}
+
+
+# Google blocks interactive sign-in inside embedded browsers such as an Electron window, so the
+# desktop app hands the OAuth flow to the user's system browser instead of embedding the normal
+# Google Identity Services button. The browser completes sign-in against Google directly, Google
+# redirects it to our own callback below, and that callback sends the browser back to the app via
+# a "techprep://" deep link carrying a short-lived, single-use handoff code. The desktop app then
+# redeems that code for a real session through the exchange endpoint. State and handoff codes are
+# tracked in-memory (this server runs as a single process) and pruned as they expire.
+_GOOGLE_DESKTOP_STATE_TTL = 600  # time allowed to complete the Google consent screen
+_GOOGLE_DESKTOP_HANDOFF_TTL = 120  # time allowed for the app to redeem the one-time code
+_google_desktop_states: dict[str, float] = {}
+_google_desktop_handoffs: dict[str, tuple[str, float]] = {}
+
+
+def _prune_expired_states(now: float) -> None:
+    for key in [k for k, created in _google_desktop_states.items() if created + _GOOGLE_DESKTOP_STATE_TTL < now]:
+        del _google_desktop_states[key]
+
+
+def _prune_expired_handoffs(now: float) -> None:
+    for key in [k for k, (_, created) in _google_desktop_handoffs.items() if created + _GOOGLE_DESKTOP_HANDOFF_TTL < now]:
+        del _google_desktop_handoffs[key]
+
+
+def _google_desktop_redirect_uri(request: Request) -> str:
+    base = os.getenv("APP_PUBLIC_URL") or str(request.base_url)
+    return f"{base.rstrip('/')}/api/v1/auth/google/desktop/callback"
+
+
+_GOOGLE_DESKTOP_HANDOFF_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>TechPrep sign-in</title></head>
+<body style="font-family: system-ui, sans-serif; background: #080a11; color: #f8fafc;
+  display: grid; place-items: center; height: 100vh; margin: 0; text-align: center;">
+  <div>
+    <p>{message}</p>
+    {link}
+  </div>
+  <script>{script}</script>
+</body></html>"""
+
+
+def _google_desktop_handoff_page(message: str, deep_link: str | None) -> HTMLResponse:
+    link_html = (
+        f'<p><a href="{deep_link}" style="color:#818cf8;">Click here if TechPrep did not reopen automatically.</a></p>'
+        if deep_link else ""
+    )
+    script = f"window.location = {json.dumps(deep_link)};" if deep_link else ""
+    return HTMLResponse(_GOOGLE_DESKTOP_HANDOFF_PAGE.format(message=message, link=link_html, script=script))
+
+
+@app.get("/api/v1/auth/google/desktop/start")
+async def google_desktop_start(request: Request):
+    if not google_auth.desktop_flow_configured():
+        raise HTTPException(503, "Google sign-in for the desktop app is not configured")
+    now = time.time()
+    _prune_expired_states(now)
+    state = secrets.token_urlsafe(24)
+    _google_desktop_states[state] = now
+    return RedirectResponse(google_auth.authorize_url(_google_desktop_redirect_uri(request), state))
+
+
+@app.get("/api/v1/auth/google/desktop/callback")
+async def google_desktop_callback(request: Request):
+    if not google_auth.desktop_flow_configured():
+        raise HTTPException(503, "Google sign-in for the desktop app is not configured")
+    now = time.time()
+    _prune_expired_states(now)
+    state = request.query_params.get("state") or ""
+    if not state or _google_desktop_states.pop(state, None) is None:
+        return _google_desktop_handoff_page("This sign-in link has expired. Return to TechPrep and try again.", None)
+    code = request.query_params.get("code")
+    if request.query_params.get("error") or not code:
+        return _google_desktop_handoff_page("Sign-in was cancelled. You can close this window.", None)
+    credential = await run_in_threadpool(google_auth.exchange_code, code, _google_desktop_redirect_uri(request))
+    email = await run_in_threadpool(google_auth.verify, credential) if credential else None
+    if email is None:
+        return _google_desktop_handoff_page("Could not verify this Google account. Return to TechPrep and try again.", None)
+    _prune_expired_handoffs(now)
+    handoff = secrets.token_urlsafe(24)
+    _google_desktop_handoffs[handoff] = (email, now)
+    return _google_desktop_handoff_page("Signed in! Returning you to TechPrep…", f"techprep://auth-callback?code={handoff}")
+
+
+class GoogleDesktopExchangeRequest(BaseModel):
+    code: str = Field(min_length=10, max_length=200)
+
+
+@app.post("/api/v1/auth/google/desktop/exchange", dependencies=[Depends(rate_limit.auth_attempt)])
+async def google_desktop_exchange(req: GoogleDesktopExchangeRequest, request: Request) -> dict:
+    now = time.time()
+    _prune_expired_handoffs(now)
+    entry = _google_desktop_handoffs.pop(req.code, None)
+    if entry is None:
+        raise HTTPException(400, "This sign-in link has expired. Return to TechPrep and try again.")
+    email, _ = entry
     user = await run_in_threadpool(users.get_or_create_google_user, email)
     try:
         await run_in_threadpool(subscriptions.grant_free_trial, user)

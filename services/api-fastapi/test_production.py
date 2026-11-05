@@ -132,6 +132,7 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json(), {
             "signup_enabled": False, "minimum_password": 12, "password_reset_enabled": False,
             "local_network": False, "store_url": None, "google_client_id": None,
+            "google_desktop_signin": False,
         })
         signup = await self.client.post("/api/v1/signup", json={
             "username": "newuser", "password": "a-valid-password", "email": "new@example.com",

@@ -32,6 +32,9 @@ async function boot({
   app.getPath = () => fs.mkdtempSync(path.join(require("node:os").tmpdir(), "techprep-test-"));
   app.getVersion = () => "0.0.0-test";
   app.requestSingleInstanceLock = () => singleInstanceLock;
+  app.setAsDefaultProtocolClient = () => true;
+  app.isDefaultProtocolClient = () => false;
+  app.isReady = () => true;
   const shortcuts = new Map();
   const globalShortcut = {
     register: (accelerator, callback) => { shortcuts.set(accelerator, callback); return true; },
@@ -89,7 +92,7 @@ async function boot({
       if (name === "child_process") return { spawn: assert.fail, execFileSync: assert.fail };
       return mainRequire(name);
     },
-    process: { platform, env, versions: { electron: "44.7.1" }, on() {} },
+    process: { platform, env, versions: { electron: "44.7.1" }, argv: ["electron", "."], defaultApp: false, on() {} },
     __dirname: path.dirname(mainPath), console, setTimeout, URL, AbortSignal,
   });
   await new Promise(setImmediate);

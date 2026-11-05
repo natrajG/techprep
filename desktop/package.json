@@ -40,6 +40,10 @@
     "extraMetadata": {
       "techprepServerUrl": "https://interviewassistant.in/"
     },
+    "protocols": {
+      "name": "TechPrep Sign-in",
+      "schemes": ["techprep"]
+    },
     "win": {
       "icon": "build/icon.ico",
       "target": "nsis"

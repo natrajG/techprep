@@ -14,6 +14,9 @@ export default function Login({
   isModal = false,
   googleClientId,
   onGoogleSignIn,
+  googleDesktopStartUrl,
+  externalError,
+  externalNotice,
 }) {
   const [mode, setMode] = useState(resetToken ? "reset" : initialMode); // signin | signup | forgot | reset
   const [confirm, setConfirm] = useState("");
@@ -27,12 +30,24 @@ export default function Login({
   const googleInitialized = useRef(false);
   const creating = mode === "signup";
   const needsConfirm = creating || mode === "reset";
-  const showGoogleButton = googleClientId && onGoogleSignIn && (mode === "signin" || mode === "signup");
+  const showGoogleButton = (googleDesktopStartUrl || (googleClientId && onGoogleSignIn)) && (mode === "signin" || mode === "signup");
+
+  // Surfaces the result of a desktop Google sign-in that completed in the system browser and handed
+  // control back to this window (see googleDesktopStartUrl below).
+  useEffect(() => {
+    if (externalError) { setError(externalError); setBusy(false); }
+  }, [externalError]);
+  useEffect(() => {
+    if (externalNotice) { setNotice(externalNotice); setBusy(false); }
+  }, [externalNotice]);
 
   // Initializes Google Identity Services once its script has loaded, then shows our
   // own themed button (Google's auto-rendered button ignores our dark theme once a
   // browser's FedCM account chooser takes over, which looked inconsistent/out of place).
+  // Not used for the desktop system-browser flow (googleDesktopStartUrl), which needs no GIS script:
+  // Google blocks its interactive sign-in inside embedded browsers like an Electron window.
   useEffect(() => {
+    if (googleDesktopStartUrl) { setGoogleReady(true); return; }
     if (!showGoogleButton) return;
     let cancelled = false;
     let attempts = 0;
@@ -63,9 +78,15 @@ export default function Login({
     }
     tryInit();
     return () => { cancelled = true; };
-  }, [showGoogleButton, googleClientId]);
+  }, [showGoogleButton, googleClientId, googleDesktopStartUrl]);
 
   function handleGoogleClick() {
+    if (googleDesktopStartUrl) {
+      setError("");
+      setNotice("Continue in your browser, then come back here \u2014 you'll be signed in automatically.");
+      window.desktop?.openExternal(googleDesktopStartUrl);
+      return;
+    }
     if (!window.google?.accounts?.id) return;
     window.google.accounts.id.prompt();
   }

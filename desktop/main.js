@@ -24,6 +24,46 @@ if (!gotSingleInstanceLock) {
   app.quit();
 }
 
+// Google blocks interactive sign-in inside embedded browsers (like this Electron window), so Google
+// sign-in opens the user's system browser instead and hands control back here through this custom
+// URL scheme once it completes (see server's /api/v1/auth/google/desktop/callback).
+const DEEP_LINK_PROTOCOL = "techprep";
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+}
+
+// macOS delivers the deep link via this event, possibly before the app finishes starting.
+let pendingDeepLink = null;
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  if (app.isReady()) handleDeepLink(url); else pendingDeepLink = url;
+});
+
+function findDeepLink(argv) {
+  return argv?.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}://`));
+}
+
+// Windows/Linux deliver the deep link as a plain argv entry (cold start below, relaunch via
+// "second-instance" below). Routes it into the login window so the renderer can redeem the code.
+function handleDeepLink(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return; }
+  if (parsed.protocol !== `${DEEP_LINK_PROTOCOL}:`) return;
+  const code = parsed.searchParams.get("code");
+  if (!code) return;
+  if (win) { restoreExistingWindow(); return; } // already signed in; ignore a stray/replayed link
+  if (!loginWin || loginWin.isDestroyed()) openLogin();
+  const target = new URL(APP_URL);
+  target.searchParams.set("login", "1");
+  target.searchParams.set("google_handoff", code);
+  loginWin.loadURL(target.toString()).catch((error) => logger.error("Cannot load Google sign-in handoff:", error));
+  restoreExistingWindow();
+}
+
 function restoreExistingWindow() {
   const target = win && !win.isDestroyed() ? win : loginWin && !loginWin.isDestroyed() ? loginWin : null;
   if (!target) return;
@@ -252,6 +292,10 @@ if (gotSingleInstanceLock) {
     }
     openLogin();
     app.on("activate", () => { if (!win && !loginWin) openLogin(); });
+    // Cold start on Windows/Linux via the techprep:// deep link, or one queued before app.isReady().
+    const coldStartLink = findDeepLink(process.argv) || pendingDeepLink;
+    pendingDeepLink = null;
+    if (coldStartLink) handleDeepLink(coldStartLink);
 
     // Global escape hatch to recover a minimized overlay: it has no taskbar/Dock entry to click.
     const restoreAccelerator = process.platform === "darwin" ? "Command+Shift+T" : "Control+Shift+T";
@@ -260,7 +304,11 @@ if (gotSingleInstanceLock) {
     }
   });
 
-  app.on("second-instance", () => restoreExistingWindow());
+  app.on("second-instance", (_event, argv) => {
+    restoreExistingWindow();
+    const link = findDeepLink(argv);
+    if (link) handleDeepLink(link);
+  });
   app.on("will-quit", () => globalShortcut.unregisterAll());
 }
 

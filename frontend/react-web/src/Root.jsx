@@ -7,8 +7,8 @@ import SupportChatbot from "./SupportChatbot";
 import WebDashboard from "./WebDashboard";
 import AdminDashboard from "./AdminDashboard";
 import {
-  checkSession, clearToken, loadConfig, login, loginWithGoogle, readResetToken, requestPasswordReset,
-  resetPassword, signup,
+  checkSession, clearToken, completeGoogleDesktopLogin, loadConfig, login, loginWithGoogle, readResetToken,
+  requestPasswordReset, resetPassword, signup,
 } from "./auth.mjs";
 import { fetchSubscriptionStatus } from "./subscriptions.mjs";
 
@@ -18,6 +18,8 @@ const API = import.meta.env.VITE_API_URL || "";
 const searchParams = new URLSearchParams(location.search);
 const loginWindow = !!desktop && searchParams.has("login");
 const renewRequested = searchParams.has("renew");
+// A completed desktop Google sign-in hands control back here with a one-time code (see main.js).
+const googleHandoffCode = loginWindow ? searchParams.get("google_handoff") : null;
 
 export default function Root() {
   const [session, setSession] = useState("checking"); // checking | signedOut | signedIn | unreachable
@@ -30,6 +32,7 @@ export default function Root() {
   const [authView, setAuthView] = useState(resetToken ? "signin" : null); // null | 'signin' | 'signup'
   const [config, setConfig] = useState(null);
   const [showRenewModal, setShowRenewModal] = useState(renewRequested);
+  const [googleHandoffError, setGoogleHandoffError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -76,6 +79,16 @@ export default function Root() {
     const expire = () => setSession("signedOut");
     window.addEventListener("auth-expired", expire);
     return () => window.removeEventListener("auth-expired", expire);
+  }, []);
+
+  // Redeems the one-time code from a desktop Google sign-in that completed in the system browser
+  // (see desktop/main.js), since GIS cannot run inside the Electron login window itself.
+  useEffect(() => {
+    if (!googleHandoffCode) return;
+    history.replaceState(null, "", location.pathname + "?login=1"); // drop the one-time code from the URL
+    completeGoogleDesktopLogin(API, googleHandoffCode)
+      .then(() => setReload((n) => n + 1))
+      .catch((e) => setGoogleHandoffError(e.message));
   }, []);
 
   // The overlay must never stay open without a session.
@@ -178,8 +191,8 @@ export default function Root() {
         onSignUp={undefined}
         wrongPasswordHint="Forgot it? Reset your password on the website."
         minimumPassword={config?.minimum_password || 8}
-        googleClientId={config?.google_client_id}
-        onGoogleSignIn={config?.google_client_id ? signInWithGoogle : undefined}
+        googleDesktopStartUrl={config?.google_desktop_signin ? `${API}/api/v1/auth/google/desktop/start` : undefined}
+        externalError={googleHandoffError}
       />
     );
   }
