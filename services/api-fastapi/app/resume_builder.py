@@ -227,6 +227,64 @@ def _score_contact(resume: str) -> tuple[int, list[str]]:
     return min(CATEGORY_MAX["contact"], score), issues
 
 
+TARGET_SCORE = 90  # the rebuild loop keeps asking for facts until the score reaches this (or runs out of asks)
+
+
+def facts_needed(resume: str, jd: str, breakdown: dict[str, dict[str, int]]) -> list[dict[str, str]]:
+    """Of the categories still below their max, returns only the ones where the *only* way to
+    improve further is real information the user must supply — things the AI must never invent
+    (metrics, dates, degrees, contact details) — each as a short, specific question to ask them.
+    Categories that are fully fixable by rewording alone (formatting, summary) are left out."""
+    asks: list[dict[str, str]] = []
+
+    if breakdown["achievements"]["score"] < breakdown["achievements"]["max"] * 0.8:
+        asks.append({
+            "category": "achievements",
+            "label": "Real numbers for your achievements",
+            "prompt": "List 2-4 real metrics for your biggest wins, one per line (e.g. 'Reduced "
+                      "page load time by 30%', 'Grew signups by 500 users/month', 'Led a team of 6').",
+        })
+
+    if breakdown["contact"]["score"] < breakdown["contact"]["max"]:
+        missing = []
+        if not _EMAIL_RE.search(resume):
+            missing.append("email address")
+        if not _PHONE_RE.search(resume):
+            missing.append("phone number")
+        if not _URL_RE.search(resume):
+            missing.append("LinkedIn/GitHub link")
+        asks.append({
+            "category": "contact",
+            "label": "Missing contact details",
+            "prompt": "Add your " + ", ".join(missing) + ".",
+        })
+
+    if breakdown["education"]["score"] < breakdown["education"]["max"]:
+        asks.append({
+            "category": "education",
+            "label": "Education / certifications",
+            "prompt": "Add your degree(s), institution(s), graduation year(s), and any certifications.",
+        })
+
+    if breakdown["experience"]["score"] < breakdown["experience"]["max"] * 0.9:
+        asks.append({
+            "category": "experience",
+            "label": "Employment dates",
+            "prompt": "Add the exact start/end dates (e.g. 'Jan 2021 - Present') for each role listed.",
+        })
+
+    if jd.strip() and breakdown["keywords"]["score"] < breakdown["keywords"]["max"] * 0.7:
+        missing = sorted(_tokenize(jd) - _tokenize(resume))[:8]
+        if missing:
+            asks.append({
+                "category": "keywords",
+                "label": "Relevant keywords from the job description",
+                "prompt": "Which of these do you genuinely have real experience with: " + ", ".join(missing) + "?",
+            })
+
+    return asks
+
+
 def analyze(resume: str, jd: str) -> dict[str, Any]:
     """Pure function: deterministic given the same ANALYZER_VERSION + inputs."""
     breakdown: dict[str, dict[str, int]] = {}
@@ -252,6 +310,7 @@ def analyze(resume: str, jd: str) -> dict[str, Any]:
         "overall_max": sum(CATEGORY_MAX.values()),
         "breakdown": breakdown,
         "issues": issues,
+        "facts_needed": [] if overall >= TARGET_SCORE else facts_needed(resume, jd, breakdown),
     }
 
 

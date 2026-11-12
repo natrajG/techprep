@@ -136,6 +136,9 @@ export default function Root() {
     setIsAdmin(false);
     setSubscription(null);
     setTokenUsage(null);
+    // Resume/JD text is per-user data; don't let it leak to the next account on this browser.
+    localStorage.removeItem("resume");
+    localStorage.removeItem("jd");
     if (desktop) desktop.signOut();
     else setSession("signedOut");
   }

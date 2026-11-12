@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
-  analyzeResume, createResumePaymentOrder, downloadResumeVersion, getResumeEntitlement,
-  rebuildResume, verifyResumePayment,
+  analyzeResume, createResumePaymentOrder, downloadResumeVersion, getRebuildVersion,
+  getResumeEntitlement, rebuildResume, verifyResumePayment,
 } from "./resume-builder.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
@@ -41,6 +41,7 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
   const [utrRef, setUtrRef] = useState("");
   const [downloadingFmt, setDownloadingFmt] = useState(""); // "pdf" | "docx" | ""
   const [downloadError, setDownloadError] = useState("");
+  const [facts, setFacts] = useState({}); // category -> user-supplied text, answering facts_needed prompts
 
   async function runAnalysis() {
     setStatus("loading");
@@ -55,11 +56,20 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
     }
   }
 
+  function factsAsText() {
+    return Object.entries(facts)
+      .filter(([, value]) => value.trim())
+      .map(([category, value]) => `${category}: ${value.trim()}`)
+      .join("\n");
+  }
+
   async function runRebuild() {
     setRebuildStatus("loading");
     setRebuildError("");
     try {
-      const data = await rebuildResume(API, resume, jd, result?.id ?? null, fetch, localStorage, notifyExpired);
+      const data = await rebuildResume(
+        API, resume, jd, result?.id ?? null, factsAsText(), fetch, localStorage, notifyExpired
+      );
       setRebuilt(data);
       setRebuildStatus("done");
       getResumeEntitlement(API, fetch, localStorage, notifyExpired).then(setEntitlement).catch(() => {});
@@ -116,6 +126,10 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
       await verifyResumePayment(API, orderId, details, fetch, localStorage, notifyExpired);
       const updated = await getResumeEntitlement(API, fetch, localStorage, notifyExpired);
       setEntitlement(updated);
+      if (rebuilt?.version_id) {
+        const full = await getRebuildVersion(API, rebuilt.version_id, fetch, localStorage, notifyExpired);
+        setRebuilt(full);
+      }
       setPayStatus("done");
     } catch (e) {
       setPayError(e.message);
@@ -213,6 +227,10 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                 </div>
               )}
 
+              {rebuildStatus !== "done" && result.facts_needed?.length > 0 && (
+                <FactsForm asks={result.facts_needed} facts={facts} setFacts={setFacts} />
+              )}
+
               <div style={styles.ctaRow}>
                 <button style={styles.secondaryBtn} onClick={onClose}>Continue With Existing Resume — Free</button>
                 {rebuildStatus !== "done" && (
@@ -221,14 +239,14 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                     onClick={runRebuild}
                     disabled={rebuildStatus === "loading"}
                   >
-                    {rebuildStatus === "loading" ? "Rebuilding your resume…" : "Rebuild ATS-Friendly Resume — Free (beta)"}
+                    {rebuildStatus === "loading" ? "Rebuilding your resume…" : "Rebuild ATS-Friendly Resume"}
                   </button>
                 )}
               </div>
               {rebuildStatus === "error" && (
                 <p style={{ ...styles.hint, color: "#f87171" }}>{rebuildError}</p>
               )}
-              {rebuildStatus === "done" && rebuilt && (
+              {(rebuildStatus === "done" || rebuildStatus === "loading") && rebuilt && (
                 <div style={styles.rebuildBox}>
                   <div style={styles.overallRow}>
                     <span style={styles.overallLabel}>Before → After</span>
@@ -254,16 +272,46 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                             {job.title} — {job.company} ({job.dates})
                           </p>
                           <ul style={styles.issuesList}>
-                            {job.bullets.map((bullet, j) => <li key={j}>{bullet}</li>)}
+                            {job.bullets.map((bullet, j) => (
+                              <li key={j} style={bullet.startsWith("🔒") ? styles.lockedBullet : undefined}>
+                                {bullet}
+                              </li>
+                            ))}
                           </ul>
                         </div>
                       ))}
                     </>
                   )}
-                  <p style={styles.disclaimer}>
-                    Downloading the formatted resume (PDF/DOCX) requires a one-time ₹10 payment
-                    that unlocks unlimited downloads &amp; regenerations for 24 hours.
-                  </p>
+                  {rebuilt.locked && (
+                    <p style={{ ...styles.hint, color: "#fbbf24" }}>
+                      🔒 This is a preview. Pay ₹10 to unlock the full rewritten resume text and
+                      download the formatted PDF/DOCX — unlimited for 24 hours.
+                    </p>
+                  )}
+                  {!rebuilt.locked && (
+                    <p style={styles.disclaimer}>
+                      Unlocked — you can copy this text freely and download the formatted PDF/DOCX
+                      below for 24 hours.
+                    </p>
+                  )}
+
+                  {rebuilt.facts_needed?.length > 0 && rebuilt.rebuilt_score < rebuilt.target_score && (
+                    <>
+                      <p style={{ ...styles.hint, color: "#fbbf24" }}>
+                        Score is {rebuilt.rebuilt_score}/{rebuilt.overall_max} — still below the
+                        {" "}{rebuilt.target_score}+ target. Answer these to let the AI close the gap
+                        (it will never invent facts you don't confirm):
+                      </p>
+                      <FactsForm asks={rebuilt.facts_needed} facts={facts} setFacts={setFacts} />
+                      <button
+                        style={styles.secondaryBtn}
+                        onClick={runRebuild}
+                        disabled={rebuildStatus === "loading"}
+                      >
+                        {rebuildStatus === "loading" ? "Rebuilding…" : "Rebuild Again With These Details"}
+                      </button>
+                    </>
+                  )}
 
                   {entitlement?.active ? (
                     <div style={styles.downloadRow}>
@@ -300,7 +348,7 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                       onClick={startPayment}
                       disabled={payStatus === "loading" || payStatus === "verifying"}
                     >
-                      {payStatus === "verifying" ? "Verifying payment…" : "Pay ₹10 to Unlock Downloads (24h)"}
+                      {payStatus === "verifying" ? "Verifying payment…" : "Pay ₹10 to Unlock Full Resume & Downloads (24h)"}
                     </button>
                   )}
                   {payStatus === "error" && (
@@ -319,6 +367,28 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Renders one small labelled textarea per category still below resume_builder.TARGET_SCORE,
+// so the user supplies exactly the real facts (metrics, dates, contact info) the AI is not
+// allowed to invent — instead of one vague freeform box.
+function FactsForm({ asks, facts, setFacts }) {
+  return (
+    <div style={styles.factsBox}>
+      {asks.map((ask) => (
+        <label key={ask.category} style={styles.factsLabel}>
+          {ask.label}
+          <textarea
+            style={styles.factsInput}
+            rows={2}
+            placeholder={ask.prompt}
+            value={facts[ask.category] || ""}
+            onChange={(e) => setFacts((prev) => ({ ...prev, [ask.category]: e.target.value }))}
+          />
+        </label>
+      ))}
     </div>
   );
 }
@@ -372,4 +442,14 @@ const styles = {
     color: "#f8fafc", padding: "8px 10px", fontSize: 13,
   },
   disclaimer: { margin: 0, fontSize: 11, color: "#64748b" },
+  lockedBullet: { color: "#94a3b8", fontStyle: "italic" },
+  factsBox: {
+    background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.1)",
+    borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10,
+  },
+  factsLabel: { display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, fontWeight: 600, color: "#e2e8f0" },
+  factsInput: {
+    background: "#0b0e16", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc",
+    padding: "8px 10px", fontSize: 12.5, fontWeight: 400, resize: "vertical", fontFamily: "inherit",
+  },
 };

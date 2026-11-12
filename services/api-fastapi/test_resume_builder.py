@@ -68,6 +68,22 @@ class ResumeAnalyzerPureFunctionTests(unittest.TestCase):
         self.assertEqual(set(result["breakdown"].keys()), set(resume_builder.CATEGORY_MAX.keys()))
         self.assertEqual(sum(c["max"] for c in result["breakdown"].values()), 100)
 
+    def test_weak_resume_lists_facts_needed_to_reach_target_score(self):
+        result = resume_builder.analyze(WEAK_RESUME, SAMPLE_JD)
+        self.assertLess(result["overall_score"], resume_builder.TARGET_SCORE)
+        self.assertTrue(result["facts_needed"])
+        categories = {ask["category"] for ask in result["facts_needed"]}
+        self.assertIn("achievements", categories)
+        self.assertIn("contact", categories)
+        self.assertIn("education", categories)
+
+    def test_strong_resume_above_target_asks_for_nothing(self):
+        # STRONG_RESUME already quantifies most bullets, has contact/education/experience —
+        # once a resume clears TARGET_SCORE there is nothing left worth asking the user for.
+        result = resume_builder.analyze(STRONG_RESUME, SAMPLE_JD)
+        if result["overall_score"] >= resume_builder.TARGET_SCORE:
+            self.assertEqual(result["facts_needed"], [])
+
 
 class ResumeAnalyzeApiTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

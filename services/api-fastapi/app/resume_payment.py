@@ -1,9 +1,10 @@
 """Phase 4: a one-time ₹10 payment that unlocks resume-rebuild downloads for 24 hours.
 
-The rebuild itself (resume_rebuild.py) is free to preview — paying once lets the user download
-the formatted PDF/DOCX for *any* version they own (regenerate as many times as they like) for a
-24-hour window from the moment payment is verified, reusing the same Razorpay/UPI helpers and
-verification pattern as subscriptions.py.
+The rebuild itself (resume_rebuild.py) is free to run and shows a teaser of the result — paying
+once reveals the full rewritten text and lets the user download the formatted PDF/DOCX for *any*
+version they own (regenerate as many times as they like) for a 24-hour window from the moment
+payment is verified, reusing the same Razorpay/UPI helpers and verification pattern as
+subscriptions.py.
 """
 import hashlib
 import hmac

@@ -24,13 +24,13 @@ export async function analyzeResume(api, resume, jd, fetchImpl = fetch, storage 
   return response.json();
 }
 
-export async function rebuildResume(api, resume, jd, analysisId, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+export async function rebuildResume(api, resume, jd, analysisId, extraContext = "", fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
   const response = await authFetch(
     `${api}/api/v1/resume-builder/rebuild`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resume, jd, analysis_id: analysisId ?? null }),
+      body: JSON.stringify({ resume, jd, analysis_id: analysisId ?? null, extra_context: extraContext }),
     },
     fetchImpl, storage, onExpired
   );
@@ -39,6 +39,12 @@ export async function rebuildResume(api, resume, jd, analysisId, fetchImpl = fet
   if (response.status === 429) throw new Error("Daily resume rebuild limit reached. Try again tomorrow.");
   if (response.status === 502) throw new Error((await response.json().catch(() => ({}))).detail || "The resume rebuild service is unavailable right now.");
   if (!response.ok) throw new Error(`Could not rebuild your resume (HTTP ${response.status})${await parseErrorDetail(response)}`);
+  return response.json();
+}
+
+export async function getRebuildVersion(api, versionId, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+  const response = await authFetch(`${api}/api/v1/resume-builder/rebuild/${versionId}`, {}, fetchImpl, storage, onExpired);
+  if (!response.ok) throw new Error(`Could not load your rebuilt resume (HTTP ${response.status})`);
   return response.json();
 }
 

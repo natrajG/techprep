@@ -34,7 +34,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
             Interactive Demo
           </button>
           <a href="#ats-score-builder" style={styles.navBtn}>
-            ATS Score Builder
+            ATS Resume Builder
           </a>
           <a href="#mock-interview" style={styles.navBtn}>
             Mock Interview
@@ -63,7 +63,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
           always-on-top glass overlay. Hidden from Zoom, Teams & Google Meet screen sharing.
         </p>
         <p style={styles.newFeatureCallout}>
-          🆕 <strong>Free ATS Resume Score Builder</strong> — upload your resume &amp; a job description, get an
+          🆕 <strong>Free ATS Resume Builder</strong> — upload your resume &amp; a job description, get an
           instant ATS compatibility score breakdown, and let AI rebuild an ATS-friendly version of your resume.
         </p>
 
@@ -127,7 +127,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
         </article>
         <article style={styles.card}>
           <div style={styles.cardIcon}>📊</div>
-          <h2 style={styles.h2}>Free ATS Resume Score Builder</h2>
+          <h2 style={styles.h2}>Free ATS Resume Builder</h2>
           <p style={styles.cardText}>
             Paste your resume and a job description to get a free ATS score breakdown (formatting, keywords,
             experience, achievements, summary, education &amp; contact info) — then let AI rebuild an

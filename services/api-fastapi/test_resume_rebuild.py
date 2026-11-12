@@ -82,6 +82,15 @@ class ResumeRebuildSchemaTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(resume_rebuild.RebuildError):
                 await resume_rebuild.rewrite_resume(SAMPLE_RESUME, "", [])
 
+    async def test_rewrite_passes_extra_context_into_the_prompt(self):
+        fake = _fake_client(REBUILT_PAYLOAD)
+        with patch.object(llm, "client", return_value=fake):
+            await resume_rebuild.rewrite_resume(
+                SAMPLE_RESUME, "", [], extra_context="achievements: Cut deploy time by 60%"
+            )
+        sent_prompt = fake.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("Cut deploy time by 60%", sent_prompt)
+
     async def test_rebuild_and_score_renders_and_persists_version(self):
         fake = _fake_client(REBUILT_PAYLOAD)
         with patch.object(llm, "client", return_value=fake):
@@ -151,6 +160,57 @@ class ResumeRebuildApiTests(unittest.IsolatedAsyncioTestCase):
         get_res = await self.client.get(f"/api/v1/resume-builder/rebuild/{version_id}", headers=self.headers)
         self.assertEqual(get_res.status_code, 200)
         self.assertEqual(get_res.json()["version_id"], version_id)
+
+    async def test_rebuild_preview_is_locked_until_paid(self):
+        fake = _fake_client(REBUILT_PAYLOAD)
+        with patch.object(llm, "client", return_value=fake):
+            res = await self.client.post(
+                "/api/v1/resume-builder/rebuild", json={"resume": SAMPLE_RESUME}, headers=self.headers,
+            )
+        body = res.json()
+        self.assertTrue(body["locked"])
+        self.assertEqual(body["preview"]["contact"], "")
+        self.assertEqual(body["preview"]["certifications"], [])
+        self.assertEqual(body["preview"]["education"], [])
+        # Only the first bullet of each job is shown; a lock notice replaces the rest.
+        self.assertEqual(len(body["preview"]["experience"][0]["bullets"]), 1)
+        self.assertEqual(body["target_score"], resume_rebuild.resume_builder.TARGET_SCORE)
+        self.assertIsInstance(body["facts_needed"], list)
+
+        get_res = await self.client.get(
+            f"/api/v1/resume-builder/rebuild/{body['version_id']}", headers=self.headers,
+        )
+        self.assertTrue(get_res.json()["locked"])
+        self.assertEqual(get_res.json()["preview"]["contact"], "")
+
+    async def test_rebuild_preview_unlocks_after_payment(self):
+        from app import resume_payment
+
+        payer = resume_payment.TEST_PAYMENT_USER
+        payer_headers = {"Authorization": f"Bearer {auth.issue_token(payer)}"}
+        fake = _fake_client(REBUILT_PAYLOAD)
+        with patch.object(llm, "client", return_value=fake):
+            res = await self.client.post(
+                "/api/v1/resume-builder/rebuild", json={"resume": SAMPLE_RESUME}, headers=payer_headers,
+            )
+        version_id = res.json()["version_id"]
+
+        order = (await self.client.post(
+            "/api/v1/resume-builder/payment/create-order", headers=payer_headers,
+        )).json()
+        await self.client.post(
+            "/api/v1/resume-builder/payment/verify",
+            json={"order_id": order["order_id"], "utr_ref": "123456789012"},
+            headers=payer_headers,
+        )
+
+        get_res = await self.client.get(
+            f"/api/v1/resume-builder/rebuild/{version_id}", headers=payer_headers,
+        )
+        body = get_res.json()
+        self.assertFalse(body["locked"])
+        self.assertEqual(body["preview"]["contact"], REBUILT_PAYLOAD["contact"])
+        self.assertEqual(body["preview"]["experience"][0]["bullets"], REBUILT_PAYLOAD["experience"][0]["bullets"])
 
 
 if __name__ == "__main__":

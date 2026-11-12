@@ -68,7 +68,7 @@ export default function WebDashboard({
             ✨ Mock Interview
           </button>
           <button style={styles.atsScoreBtn} onClick={() => setShowAtsScore(true)}>
-            📊 ATS Score Builder
+            📊 ATS Resume Builder
           </button>
           {passwordResetEnabled && !isAdmin && (
             <button style={styles.signOutBtn} onClick={() => setShowAccountSettings(true)} title="Update your account recovery email">
@@ -201,14 +201,14 @@ export default function WebDashboard({
 
           <section style={{ ...styles.card, ...styles.atsCard }}>
             <div style={styles.cardHeader}>
-              <h2 style={styles.cardTitle}>📊 Free ATS Resume Score Builder</h2>
+              <h2 style={styles.cardTitle}>📊 Free ATS Resume Builder</h2>
             </div>
             <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
               Paste your resume and the target job description to get a free ATS score breakdown
               (formatting, keywords, experience, achievements, summary, education &amp; contact info),
-              then let AI rebuild an ATS-friendly version of your resume. Downloading the rebuilt
-              PDF/DOCX costs a one-time ₹10 (unlocks unlimited downloads for 24 hours) — the score and
-              AI rebuild preview are always free.
+              then let AI rebuild an ATS-friendly version of your resume — the score check and a
+              preview of the rebuild are free. Unlocking the full rewritten text and downloading
+              it as PDF/DOCX costs a one-time ₹10 (unlimited downloads &amp; regenerations for 24 hours).
             </p>
             <div style={styles.atsFieldsRow}>
               <label style={styles.fieldLabel}>
