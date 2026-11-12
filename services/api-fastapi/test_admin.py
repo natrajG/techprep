@@ -110,3 +110,39 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             # Verify no longer active
             status_after = await self.client.get("/api/v1/subscription/status", headers=self.regular_headers)
             self.assertFalse(status_after.json()["has_active"])
+
+    async def test_admin_can_delete_a_user_and_their_data(self):
+        with patch.dict("os.environ", {"APP_USERNAME": self.admin_user}):
+            users.record_token_usage(self.regular_user, 10, 10)
+
+            del_res = await self.client.delete(
+                f"/api/v1/admin/users/{self.regular_user}", headers=self.admin_headers
+            )
+            self.assertEqual(del_res.status_code, 200)
+            self.assertEqual(del_res.json()["status"], "success")
+
+            # User and their token usage are gone
+            self.assertIsNone(users.verify_user(self.regular_user, "ValidPassword123!"))
+            self.assertEqual(users.get_token_usage(self.regular_user), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+
+            users_res = await self.client.get("/api/v1/admin/users", headers=self.admin_headers)
+            self.assertEqual(users_res.json()["summary"]["total_users"], 0)
+
+            # Deleting again is a 404, not a silent success
+            missing_res = await self.client.delete(
+                f"/api/v1/admin/users/{self.regular_user}", headers=self.admin_headers
+            )
+            self.assertEqual(missing_res.status_code, 404)
+
+    async def test_admin_cannot_delete_their_own_account(self):
+        with patch.dict("os.environ", {"APP_USERNAME": self.admin_user}):
+            users.create_user(self.admin_user, "ValidPassword123!", "admin@example.com")
+            res = await self.client.delete(f"/api/v1/admin/users/{self.admin_user}", headers=self.admin_headers)
+            self.assertEqual(res.status_code, 400)
+
+    async def test_non_admin_cannot_delete_users(self):
+        with patch.dict("os.environ", {"APP_USERNAME": self.admin_user}):
+            res = await self.client.delete(
+                f"/api/v1/admin/users/{self.regular_user}", headers=self.regular_headers
+            )
+            self.assertEqual(res.status_code, 403)

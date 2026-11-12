@@ -137,7 +137,9 @@ class RebuildError(Exception):
     pass
 
 
-async def rewrite_resume(resume: str, jd: str, issues: list[str], extra_context: str = "") -> RebuiltResume:
+async def rewrite_resume(
+    resume: str, jd: str, issues: list[str], extra_context: str = "", username: str | None = None
+) -> RebuiltResume:
     c = llm.client()
     if c is None:
         raise RebuildError("The resume rebuild feature is not configured yet.")
@@ -152,6 +154,12 @@ async def rewrite_resume(resume: str, jd: str, issues: list[str], extra_context:
             messages=[{"role": "user", "content": prompt}],
             **llm._temperature(0.2, RESUME_LLM_MODEL),
         )
+        # Resume rebuilds call the OpenAI client directly (not via llm.complete()), so token
+        # usage was never credited to the user's token_usage row. Record it here to keep the
+        # admin "tokens burned" total accurate for this feature too.
+        usage = getattr(resp, "usage", None)
+        if username and usage is not None:
+            users.record_token_usage(username, usage.prompt_tokens, usage.completion_tokens)
         raw = json.loads(resp.choices[0].message.content or "{}")
     except Exception:
         logger.exception("Resume rebuild LLM call failed")
@@ -169,7 +177,7 @@ async def rebuild_and_score(
     rate_limit.consume("resume_rebuild", username.lower(), DAILY_REBUILD_LIMIT, 24 * 3600)
     original = resume_builder.analyze(resume, jd)
 
-    rebuilt = await rewrite_resume(resume, jd, original["issues"], extra_context)
+    rebuilt = await rewrite_resume(resume, jd, original["issues"], extra_context, username=username)
     data = rebuilt.model_dump()
 
     pdf_bytes = resume_renderer.render_pdf(data)

@@ -39,12 +39,14 @@ B.S. Computer Science, State University (2014 - 2018)
 """
 
 
-def _fake_chat_response(payload: dict):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))])
+def _fake_chat_response(payload: dict, usage: SimpleNamespace | None = None):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))], usage=usage
+    )
 
 
-def _fake_client(payload: dict | None = None):
-    create = AsyncMock(return_value=_fake_chat_response(payload)) if payload is not None else AsyncMock()
+def _fake_client(payload: dict | None = None, usage: SimpleNamespace | None = None):
+    create = AsyncMock(return_value=_fake_chat_response(payload, usage)) if payload is not None else AsyncMock()
     return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
 
@@ -90,6 +92,15 @@ class ResumeRebuildSchemaTests(unittest.IsolatedAsyncioTestCase):
             )
         sent_prompt = fake.chat.completions.create.call_args.kwargs["messages"][0]["content"]
         self.assertIn("Cut deploy time by 60%", sent_prompt)
+
+    async def test_rewrite_records_token_usage_for_the_user(self):
+        fake = _fake_client(REBUILT_PAYLOAD, usage=SimpleNamespace(prompt_tokens=120, completion_tokens=45))
+        with patch.object(llm, "client", return_value=fake):
+            await resume_rebuild.rewrite_resume(SAMPLE_RESUME, "", [], username="tokentest")
+        self.assertEqual(
+            users.get_token_usage("tokentest"),
+            {"prompt_tokens": 120, "completion_tokens": 45, "total_tokens": 165},
+        )
 
     async def test_rebuild_and_score_renders_and_persists_version(self):
         fake = _fake_client(REBUILT_PAYLOAD)

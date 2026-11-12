@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import AdminFeedback from "./AdminFeedback";
 import AdminPlans from "./AdminPlans";
-import { fetchAdminUsers, grantAdminSubscription, revokeAdminSubscription } from "./admin.mjs";
+import { fetchAdminUsers, grantAdminSubscription, revokeAdminSubscription, deleteAdminUser } from "./admin.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
@@ -106,6 +106,23 @@ export default function AdminDashboard({ user, onSignOut }) {
       loadUsers();
     } catch (err) {
       alert(`Error revoking subscription: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteUser(username) {
+    if (
+      !window.confirm(
+        `Permanently delete "${username}"? This removes the account, token usage, resume data, ` +
+          `feedback, and payment/subscription history. This cannot be undone.`
+      )
+    )
+      return;
+    try {
+      await deleteAdminUser(API, username, fetch, localStorage, notifyExpired);
+      if (expandedUser === username) setExpandedUser(null);
+      loadUsers();
+    } catch (err) {
+      alert(`Error deleting user: ${err.message}`);
     }
   }
 
@@ -347,6 +364,13 @@ export default function AdminDashboard({ user, onSignOut }) {
                                   Revoke
                                 </button>
                               )}
+                              <button
+                                style={styles.deleteBtn}
+                                onClick={() => handleDeleteUser(u.username)}
+                                title="Permanently delete this user and all their data"
+                              >
+                                🗑 Delete
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -785,6 +809,10 @@ const styles = {
   revokeBtn: {
     padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(248, 113, 113, 0.3)",
     background: "rgba(248, 113, 113, 0.15)", color: "#fca5a5", fontSize: 12, cursor: "pointer",
+  },
+  deleteBtn: {
+    padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(239, 68, 68, 0.5)",
+    background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   historyDrawer: {
     marginTop: 18, padding: 18, borderRadius: 10, background: "#0f172a",

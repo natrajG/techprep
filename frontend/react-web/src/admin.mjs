@@ -42,3 +42,17 @@ export async function revokeAdminSubscription(api, payload, fetchImpl = fetch, s
   }
   return res.json();
 }
+
+export async function deleteAdminUser(api, username, fetchImpl = fetch, storage = localStorage, onExpired = () => {}) {
+  const res = await authFetch(
+    `${api}/api/v1/admin/users/${encodeURIComponent(username)}`,
+    { method: "DELETE" },
+    fetchImpl, storage, onExpired
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(typeof body.detail === "string" ? body.detail : `Failed to delete user (${res.status})`);
+  }
+  return res.json();
+}
+

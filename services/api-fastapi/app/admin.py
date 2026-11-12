@@ -326,3 +326,33 @@ def revoke_subscription(req: RevokeSubscriptionRequest, admin: str = Depends(req
         "status": "success",
         "message": f"Revoked active subscription for {req.username}.",
     }
+
+
+@router.delete("/users/{username}")
+def delete_user(username: str, admin: str = Depends(require_admin)) -> dict:
+    """Permanently deletes a user account and every row tied to it across all tables
+    (token usage, resume analyses/rebuilds, feedback, ratings, subscriptions, payment
+    history, sessions, password resets). Irreversible — used for account-deletion
+    requests and spam/test account cleanup.
+    """
+    if username.lower() == admin.lower():
+        raise HTTPException(400, "You cannot delete your own admin account.")
+    with users.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
+        if not existing:
+            raise HTTPException(404, f"No user found with username '{username}'.")
+        conn.execute(
+            "DELETE FROM call_sessions WHERE subscription_id IN "
+            "(SELECT id FROM subscriptions WHERE username = ? COLLATE NOCASE)",
+            (username,),
+        )
+        for table in (
+            "token_usage", "password_resets", "user_sessions", "ratings", "feedback",
+            "interview_history", "resume_analyses", "resume_versions", "resume_payment_orders",
+            "subscriptions", "payment_orders",
+        ):
+            conn.execute(f"DELETE FROM {table} WHERE username = ? COLLATE NOCASE", (username,))
+        conn.execute("DELETE FROM users WHERE username = ? COLLATE NOCASE", (username,))
+    return {"status": "success", "message": f"Deleted user '{username}' and all associated data."}
+
