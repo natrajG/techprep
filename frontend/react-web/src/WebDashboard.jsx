@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import RecoveryEmail from "./RecoveryEmail";
 import DesktopDownload from "./DesktopDownload";
 import SubscriptionPricing from "./SubscriptionPricing";
@@ -7,7 +7,11 @@ import AdminFeedback from "./AdminFeedback";
 import FeedbackModal from "./FeedbackModal";
 import MockInterview from "./MockInterview";
 import InterviewHistory from "./InterviewHistory";
+import ResumeUploadButton from "./ResumeUploadButton";
+import AtsScorePanel from "./AtsScorePanel";
 import { lowCallWarning } from "./subscriptions.mjs";
+
+const load = (k, d = "") => localStorage.getItem(k) ?? d;
 
 export default function WebDashboard({
   user,
@@ -24,6 +28,11 @@ export default function WebDashboard({
   const [showFeedback, setShowFeedback] = useState(false);
   const [showMockInterview, setShowMockInterview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAtsScore, setShowAtsScore] = useState(false);
+  const [resume, setResume] = useState(() => load("resume"));
+  const [jd, setJd] = useState(() => load("jd"));
+  useEffect(() => localStorage.setItem("resume", resume), [resume]);
+  useEffect(() => localStorage.setItem("jd", jd), [jd]);
   const hasActiveSub = subscription && subscription.status === "active";
   const lowCalls = lowCallWarning(subscription);
   const callsExhausted = hasActiveSub && subscription.calls_remaining === 0 &&
@@ -56,6 +65,9 @@ export default function WebDashboard({
           </button>
           <button style={styles.mockInterviewBtn} onClick={() => setShowMockInterview(true)}>
             ✨ Mock Interview
+          </button>
+          <button style={styles.atsScoreBtn} onClick={() => setShowAtsScore(true)}>
+            📊 ATS Score Builder
           </button>
           <button style={styles.signOutBtn} onClick={() => setShowFeedback(true)}>
             Feedback
@@ -150,6 +162,47 @@ export default function WebDashboard({
               </div>
             )}
           </section>
+
+          <section style={{ ...styles.card, ...styles.atsCard }}>
+            <div style={styles.cardHeader}>
+              <h2 style={styles.cardTitle}>📊 Free ATS Resume Score Builder</h2>
+            </div>
+            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
+              Paste your resume and the target job description to get a free ATS score breakdown
+              (formatting, keywords, experience, achievements, summary, education &amp; contact info),
+              then let AI rebuild an ATS-friendly version of your resume.
+            </p>
+            <label style={styles.fieldLabel}>
+              Resume (experience, skills, projects)
+              <textarea
+                rows={5}
+                style={styles.textarea}
+                placeholder="Paste your resume contents or key accomplishments..."
+                value={resume}
+                onChange={(e) => setResume(e.target.value)}
+              />
+            </label>
+            <ResumeUploadButton onExtracted={setResume} style={{ marginTop: 8 }} />
+            <label style={{ ...styles.fieldLabel, marginTop: 12 }}>
+              Target Job Description &amp; Requirements
+              <textarea
+                rows={4}
+                style={styles.textarea}
+                placeholder="Paste the job description, tech stack, or interviewer focus areas..."
+                value={jd}
+                onChange={(e) => setJd(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              style={{ ...styles.primaryBtn, marginTop: 16 }}
+              onClick={() => setShowAtsScore(true)}
+              disabled={!resume.trim()}
+            >
+              📊 Check ATS Score
+            </button>
+          </section>
+
           {isAdmin && <AdminPlans />}
           {isAdmin && <AdminFeedback />}
           <section style={styles.card}>
@@ -245,6 +298,10 @@ export default function WebDashboard({
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
       {showMockInterview && <MockInterview onClose={() => setShowMockInterview(false)} />}
+
+      {showAtsScore && (
+        <AtsScorePanel resume={resume} jd={jd} onClose={() => setShowAtsScore(false)} />
+      )}
 
       {showPricing && (
         <SubscriptionPricing
@@ -370,6 +427,37 @@ const styles = {
     fontSize: 12,
     cursor: "pointer",
     fontWeight: 700,
+  },
+  atsScoreBtn: {
+    background: "linear-gradient(135deg, rgba(74, 222, 128, 0.18) 0%, rgba(56, 189, 248, 0.18) 100%)",
+    border: "1px solid rgba(74, 222, 128, 0.4)",
+    color: "#dcfce7",
+    padding: "7px 14px",
+    borderRadius: 8,
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  atsCard: {
+    gridColumn: "1 / -1",
+  },
+  fieldLabel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    fontSize: 12,
+    color: "#94a3b8",
+    fontWeight: 600,
+  },
+  textarea: {
+    background: "rgba(0, 0, 0, 0.25)",
+    border: "1px solid rgba(255, 255, 255, 0.1)",
+    borderRadius: 10,
+    padding: "10px 12px",
+    color: "#f8fafc",
+    fontSize: 13,
+    fontFamily: "inherit",
+    resize: "vertical",
   },
   main: {
     maxWidth: 1040,
