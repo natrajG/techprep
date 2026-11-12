@@ -36,6 +36,9 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
           <a href="#ats-score-builder" style={styles.navBtn}>
             ATS Score Builder
           </a>
+          <a href="#mock-interview" style={styles.navBtn}>
+            Mock Interview
+          </a>
           <button style={styles.navBtn} onClick={() => setShowPricing(true)}>
             Pricing
           </button>
@@ -129,6 +132,14 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
             Paste your resume and a job description to get a free ATS score breakdown (formatting, keywords,
             experience, achievements, summary, education &amp; contact info) — then let AI rebuild an
             ATS-friendly version of your resume.
+          </p>
+        </article>
+        <article style={styles.card} id="mock-interview">
+          <div style={styles.cardIcon}>🎤</div>
+          <h2 style={styles.h2}>AI Mock Interview Practice</h2>
+          <p style={styles.cardText}>
+            Practice out loud against AI-generated questions tailored to your role, record your spoken answer, and
+            get instant feedback on pace, clarity &amp; content — plus a sample answer to compare against.
           </p>
         </article>
       </section>

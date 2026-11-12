@@ -219,18 +219,27 @@ export default function UserProfileModal({
                   />
                 </label>
 
-                <button
-                  type="button"
-                  style={{ ...styles.subscribeBtn, marginTop: 14, alignSelf: "flex-start" }}
-                  onClick={() => setShowAtsScore(true)}
-                >
-                  📊 Check ATS Score
-                </button>
+                {desktop ? (
+                  <p style={{ ...styles.hintText, marginTop: 14 }}>
+                    📊 Want a free ATS score &amp; AI resume rebuild? Open{" "}
+                    <strong>interviewassistant.in</strong> in your web browser — that feature is web-only.
+                    Here in the desktop app, just make sure your resume and JD above are accurate for the
+                    interview assistance.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    style={{ ...styles.subscribeBtn, marginTop: 14, alignSelf: "flex-start" }}
+                    onClick={() => setShowAtsScore(true)}
+                  >
+                    📊 Check ATS Score
+                  </button>
+                )}
               </div>
             </div>
           )}
 
-          {showAtsScore && (
+          {showAtsScore && !desktop && (
             <AtsScorePanel resume={resume} jd={jd} onClose={() => setShowAtsScore(false)} />
           )}
 
