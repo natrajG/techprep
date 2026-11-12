@@ -29,6 +29,7 @@ export default function WebDashboard({
   const [showMockInterview, setShowMockInterview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showAtsScore, setShowAtsScore] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [resume, setResume] = useState(() => load("resume"));
   const [jd, setJd] = useState(() => load("jd"));
   useEffect(() => localStorage.setItem("resume", resume), [resume]);
@@ -69,6 +70,11 @@ export default function WebDashboard({
           <button style={styles.atsScoreBtn} onClick={() => setShowAtsScore(true)}>
             📊 ATS Score Builder
           </button>
+          {passwordResetEnabled && !isAdmin && (
+            <button style={styles.signOutBtn} onClick={() => setShowAccountSettings(true)} title="Update your account recovery email">
+              ⚙️ Account
+            </button>
+          )}
           <button style={styles.signOutBtn} onClick={() => setShowFeedback(true)}>
             Feedback
           </button>
@@ -163,46 +169,6 @@ export default function WebDashboard({
             )}
           </section>
 
-          <section style={{ ...styles.card, ...styles.atsCard }}>
-            <div style={styles.cardHeader}>
-              <h2 style={styles.cardTitle}>📊 Free ATS Resume Score Builder</h2>
-            </div>
-            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
-              Paste your resume and the target job description to get a free ATS score breakdown
-              (formatting, keywords, experience, achievements, summary, education &amp; contact info),
-              then let AI rebuild an ATS-friendly version of your resume.
-            </p>
-            <label style={styles.fieldLabel}>
-              Resume (experience, skills, projects)
-              <textarea
-                rows={5}
-                style={styles.textarea}
-                placeholder="Paste your resume contents or key accomplishments..."
-                value={resume}
-                onChange={(e) => setResume(e.target.value)}
-              />
-            </label>
-            <ResumeUploadButton onExtracted={setResume} style={{ marginTop: 8 }} />
-            <label style={{ ...styles.fieldLabel, marginTop: 12 }}>
-              Target Job Description &amp; Requirements
-              <textarea
-                rows={4}
-                style={styles.textarea}
-                placeholder="Paste the job description, tech stack, or interviewer focus areas..."
-                value={jd}
-                onChange={(e) => setJd(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              style={{ ...styles.primaryBtn, marginTop: 16 }}
-              onClick={() => setShowAtsScore(true)}
-              disabled={!resume.trim()}
-            >
-              📊 Check ATS Score
-            </button>
-          </section>
-
           {isAdmin && <AdminPlans />}
           {isAdmin && <AdminFeedback />}
           <section style={styles.card}>
@@ -233,14 +199,49 @@ export default function WebDashboard({
             ) : <p style={{ color: "#fca5a5" }} role="alert">Token usage unavailable. Refresh to try again.</p>}
           </section>
 
-          {passwordResetEnabled && !isAdmin && (
-            <section style={styles.card}>
-              <div style={styles.cardHeader}>
-                <h2 style={styles.cardTitle}>Account recovery</h2>
-              </div>
-              <RecoveryEmail />
-            </section>
-          )}
+          <section style={{ ...styles.card, ...styles.atsCard }}>
+            <div style={styles.cardHeader}>
+              <h2 style={styles.cardTitle}>📊 Free ATS Resume Score Builder</h2>
+            </div>
+            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>
+              Paste your resume and the target job description to get a free ATS score breakdown
+              (formatting, keywords, experience, achievements, summary, education &amp; contact info),
+              then let AI rebuild an ATS-friendly version of your resume. Downloading the rebuilt
+              PDF/DOCX costs a one-time ₹10 (unlocks unlimited downloads for 24 hours) — the score and
+              AI rebuild preview are always free.
+            </p>
+            <div style={styles.atsFieldsRow}>
+              <label style={styles.fieldLabel}>
+                Resume (experience, skills, projects)
+                <textarea
+                  rows={6}
+                  style={styles.textarea}
+                  placeholder="Paste your resume contents or key accomplishments..."
+                  value={resume}
+                  onChange={(e) => setResume(e.target.value)}
+                />
+                <ResumeUploadButton onExtracted={setResume} style={{ marginTop: 8 }} />
+              </label>
+              <label style={styles.fieldLabel}>
+                Target Job Description &amp; Requirements
+                <textarea
+                  rows={6}
+                  style={styles.textarea}
+                  placeholder="Paste the job description, tech stack, or interviewer focus areas..."
+                  value={jd}
+                  onChange={(e) => setJd(e.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              style={{ ...styles.primaryBtn, ...styles.atsSubmitBtn }}
+              onClick={() => setShowAtsScore(true)}
+              disabled={!resume.trim()}
+            >
+              📊 Check ATS Score
+            </button>
+          </section>
 
           {/* Desktop App Download + Interview History share a row to use up the leftover width */}
           <div style={styles.installerHistoryRow}>
@@ -303,6 +304,18 @@ export default function WebDashboard({
         <AtsScorePanel resume={resume} jd={jd} onClose={() => setShowAtsScore(false)} />
       )}
 
+      {showAccountSettings && (
+        <div style={styles.modalOverlay} onClick={() => setShowAccountSettings(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.cardHeader}>
+              <h2 style={styles.cardTitle}>Account recovery</h2>
+              <button style={styles.signOutBtn} onClick={() => setShowAccountSettings(false)}>✕</button>
+            </div>
+            <RecoveryEmail />
+          </div>
+        </div>
+      )}
+
       {showPricing && (
         <SubscriptionPricing
           currentSubscription={subscription}
@@ -335,9 +348,14 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "16px 28px",
-    background: "rgba(16, 19, 29, 0.8)",
+    background: "rgba(10, 12, 20, 0.95)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
     backdropFilter: "blur(12px)",
+    position: "sticky",
+    top: 0,
+    zIndex: 100,
+    flexWrap: "wrap",
+    gap: 12,
   },
   navBrand: {
     display: "flex",
@@ -373,6 +391,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 14,
+    flexWrap: "wrap",
   },
   userPill: {
     display: "flex",
@@ -440,6 +459,16 @@ const styles = {
   },
   atsCard: {
     gridColumn: "1 / -1",
+  },
+  atsFieldsRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 16,
+  },
+  atsSubmitBtn: {
+    marginTop: 16,
+    width: "auto",
+    padding: "12px 28px",
   },
   fieldLabel: {
     display: "flex",

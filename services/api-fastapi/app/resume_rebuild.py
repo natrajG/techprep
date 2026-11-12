@@ -133,9 +133,9 @@ async def rewrite_resume(resume: str, jd: str, issues: list[str]) -> RebuiltResu
     try:
         resp = await c.chat.completions.create(
             model=RESUME_LLM_MODEL,
-            temperature=0.2,
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}],
+            **llm._temperature(0.2, RESUME_LLM_MODEL),
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
     except Exception:

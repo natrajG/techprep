@@ -32,8 +32,8 @@ def _reasoning() -> dict:
     return {"reasoning_effort": REASONING_EFFORT} if REASONING_EFFORT else {}
 
 
-def _temperature(value: float) -> dict:
-    if MODEL.startswith(_NO_CUSTOM_TEMPERATURE_PREFIXES):
+def _temperature(value: float, model: str = MODEL) -> dict:
+    if model.startswith(_NO_CUSTOM_TEMPERATURE_PREFIXES):
         return {}
     return {"temperature": value}
 
