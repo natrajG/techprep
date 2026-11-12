@@ -3,6 +3,7 @@ import DesktopDownload from "./DesktopDownload";
 import CaptureProtectionSettings from "./CaptureProtectionSettings";
 import AdminPlans from "./AdminPlans";
 import ResumeUploadButton from "./ResumeUploadButton";
+import AtsScorePanel from "./AtsScorePanel";
 import { splitBold } from "./rich-text.mjs";
 import { MIN_HUD_OPACITY } from "./hud-opacity.mjs";
 
@@ -33,6 +34,7 @@ export default function UserProfileModal({
   requestCaptureProtection,
 }) {
   const [activeTab, setActiveTab] = useState("subscription"); // 'subscription' | 'profile' | 'settings' | 'download'
+  const [showAtsScore, setShowAtsScore] = useState(false);
 
   const hasActiveSub = subscription && subscription.status === "active";
   const timeLeftMinutes = subscription?.time_remaining_seconds
@@ -216,8 +218,20 @@ export default function UserProfileModal({
                     onChange={(e) => setJd(e.target.value)}
                   />
                 </label>
+
+                <button
+                  type="button"
+                  style={{ ...styles.subscribeBtn, marginTop: 14, alignSelf: "flex-start" }}
+                  onClick={() => setShowAtsScore(true)}
+                >
+                  📊 Check ATS Score
+                </button>
               </div>
             </div>
+          )}
+
+          {showAtsScore && (
+            <AtsScorePanel resume={resume} jd={jd} onClose={() => setShowAtsScore(false)} />
           )}
 
           {activeTab === "settings" && (

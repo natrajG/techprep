@@ -14,6 +14,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_
 ENV WEB_CONCURRENCY=2
 WORKDIR /srv/techprep
 COPY services/api-fastapi/requirements.txt services/api-fastapi/requirements.txt
+# WeasyPrint (ATS resume PDF export) needs Pango/Cairo/GDK-PixBuf at runtime — no headless
+# Chrome, just these shared libraries.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install -r services/api-fastapi/requirements.txt
 COPY services/api-fastapi/app services/api-fastapi/app
 COPY --from=web /build/dist frontend/react-web/dist

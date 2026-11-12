@@ -33,6 +33,9 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
           <button style={styles.navBtn} onClick={() => setShowDemo(true)}>
             Interactive Demo
           </button>
+          <a href="#ats-score-builder" style={styles.navBtn}>
+            ATS Score Builder
+          </a>
           <button style={styles.navBtn} onClick={() => setShowPricing(true)}>
             Pricing
           </button>
@@ -55,6 +58,10 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
         <p style={styles.lead}>
           Real-time audio transcription and instant, resume-tailored answers delivered through an undetectable,
           always-on-top glass overlay. Hidden from Zoom, Teams & Google Meet screen sharing.
+        </p>
+        <p style={styles.newFeatureCallout}>
+          🆕 <strong>Free ATS Resume Score Builder</strong> — upload your resume &amp; a job description, get an
+          instant ATS compatibility score breakdown, and let AI rebuild an ATS-friendly version of your resume.
         </p>
 
         <div style={styles.actions}>
@@ -93,7 +100,7 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
         </div>
       </section>
 
-      <section style={styles.grid} aria-label="Features">
+      <section style={styles.grid} aria-label="Features" id="ats-score-builder">
         <article style={styles.card}>
           <div style={styles.cardIcon}>🎙️</div>
           <h2 style={styles.h2}>Direct Loopback Audio</h2>
@@ -113,6 +120,15 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
           <h2 style={styles.h2}>Desktop Capture Protection</h2>
           <p style={styles.cardText}>
             Native OS-level content protection ensures the assistant is never recorded or shown in screen shares.
+          </p>
+        </article>
+        <article style={styles.card}>
+          <div style={styles.cardIcon}>📊</div>
+          <h2 style={styles.h2}>Free ATS Resume Score Builder</h2>
+          <p style={styles.cardText}>
+            Paste your resume and a job description to get a free ATS score breakdown (formatting, keywords,
+            experience, achievements, summary, education &amp; contact info) — then let AI rebuild an
+            ATS-friendly version of your resume.
           </p>
         </article>
       </section>
@@ -283,6 +299,18 @@ const styles = {
     lineHeight: 1.6,
     color: "#94a3b8",
     margin: "0 auto 32px",
+    maxWidth: 680,
+  },
+  newFeatureCallout: {
+    display: "inline-block",
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: "#e2e8f0",
+    background: "rgba(56, 189, 248, 0.1)",
+    border: "1px solid rgba(56, 189, 248, 0.3)",
+    borderRadius: 10,
+    padding: "10px 16px",
+    margin: "-16px auto 32px",
     maxWidth: 680,
   },
   actions: { display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", marginBottom: 40 },

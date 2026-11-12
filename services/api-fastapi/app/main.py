@@ -18,6 +18,9 @@ from . import admin, auth, downloads, google_auth, llm, mailer, rate_limit, rati
 from . import feedback
 from . import history as history_module
 from . import mock_interview
+from . import resume_builder
+from . import resume_payment
+from . import resume_rebuild
 from .prompts import EVALUATE_PROMPT, QUESTION_EXTRACT_PROMPT, SYSTEM_PROMPT
 
 @asynccontextmanager
@@ -67,6 +70,9 @@ app.include_router(downloads.router)
 app.include_router(subscriptions.router)
 app.include_router(feedback.router)
 app.include_router(mock_interview.router)
+app.include_router(resume_builder.router)
+app.include_router(resume_rebuild.router)
+app.include_router(resume_payment.router)
 app.include_router(admin.router)
 app.include_router(history_module.router)
 app.include_router(ratings.router)
