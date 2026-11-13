@@ -1,4 +1,6 @@
 {$TECHPREP_HOST} {
+	encode gzip zstd
+
 	request_body {
 		# Audio chunks are limited to 10 MB by the API; allow multipart overhead.
 		max_size 12MB

@@ -12,6 +12,8 @@ FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 # One worker per vCPU; uvicorn reads this. AI rate limits are counted per worker, so the effective ceiling is limit x workers.
 ENV WEB_CONCURRENCY=2
+# Fontconfig cache in writable tmpfs (/tmp) so WeasyPrint does not error on read-only root
+ENV XDG_CACHE_HOME=/tmp/cache
 WORKDIR /srv/techprep
 COPY services/api-fastapi/requirements.txt services/api-fastapi/requirements.txt
 # WeasyPrint (ATS resume PDF export) needs Pango/Cairo/GDK-PixBuf at runtime — no headless

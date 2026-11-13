@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   analyzeResume, createResumePaymentOrder, downloadResumeVersion, getRebuildVersion,
   getResumeEntitlement, rebuildResume, verifyResumePayment,
@@ -55,6 +55,12 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
       setStatus("error");
     }
   }
+
+  useEffect(() => {
+    if (resume?.trim()) {
+      runAnalysis();
+    }
+  }, []);
 
   function factsAsText() {
     return Object.entries(facts)
