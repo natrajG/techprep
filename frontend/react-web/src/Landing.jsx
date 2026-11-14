@@ -69,14 +69,22 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
 
         <div style={styles.actions}>
           <button style={styles.primary} onClick={onSignUp || onSignIn}>
-            Get Started Now →
+            Start Free 10-Min Trial →
           </button>
           <button style={styles.demoAction} onClick={() => setShowDemo(true)}>
             ▶ Watch Live Simulation
           </button>
         </div>
+        <p style={styles.trialNote}>
+          🎁 10 minutes free on signup · No credit card required
+        </p>
 
         <div style={styles.statsRow}>
+          <div style={styles.statItem}>
+            <strong>10 Min</strong>
+            <span>Free Trial on Signup</span>
+          </div>
+          <div style={styles.statDivider}></div>
           <div style={styles.statItem}>
             <strong>{hourly ? `₹${hourly.amount.toLocaleString()}` : "—"}</strong>
             <span>Per Call / {hourly?.duration_minutes ?? "—"}-Min Window</span>
@@ -155,6 +163,22 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
         <div style={styles.pricingCards}>
           {planError && <p role="alert" style={{ color: "#fca5a5" }}>{planError}</p>}
           {!plans.length && !planError && <p>Loading current plans…</p>}
+          <div
+            style={{ ...styles.priceCardSmall, borderColor: "rgba(74, 222, 128, 0.4)", cursor: "pointer" }}
+            onClick={onSignUp || onSignIn}
+          >
+            <span style={{ ...styles.priceCardBadge, background: "rgba(74, 222, 128, 0.15)", color: "#4ade80" }}>
+              FREE TRIAL
+            </span>
+            <h3 style={{ margin: "6px 0", fontSize: 20 }}>10-Minute Trial</h3>
+            <p style={{ fontSize: 28, fontWeight: 800, color: "#4ade80", margin: "4px 0 12px" }}>₹0</p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
+              Granted automatically when you sign up — no credit card required. Experience the invisible HUD live.
+            </p>
+            <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%", background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)" }}>
+              Start Free Trial →
+            </button>
+          </div>
           {hourly && <div
             style={{ ...styles.priceCardSmall, cursor: "pointer" }}
             onClick={() => setShowPricing(true)}
@@ -324,7 +348,8 @@ const styles = {
     margin: "-16px auto 32px",
     maxWidth: 680,
   },
-  actions: { display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", marginBottom: 40 },
+  actions: { display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", marginBottom: 14 },
+  trialNote: { fontSize: 13, color: "#94a3b8", margin: "0 0 32px" },
   primary: {
     padding: "13px 28px",
     border: 0,
