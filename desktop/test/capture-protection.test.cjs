@@ -15,6 +15,12 @@ class MockWindow extends EventEmitter {
     this.calls = [];
     this.destroyed = false;
     this.webContents = new EventEmitter();
+
+    // Mock Electron webContents.insertCSS()
+    this.webContents.insertCSS = async (css) => {
+      this.insertedCSS = css;
+      return "mock-css-key";
+    };
   }
   setContentProtection(value) {
     this.calls.push(["protection", value]);
@@ -50,6 +56,30 @@ for (const [name, environment, supported, mechanism] of [
     assert.ok(result.detail);
   });
 }
+
+test("overlay forces arrow cursor after page load", async () => {
+  const protection = createCaptureProtection(windows);
+
+  const overlay = createOverlayWindow({
+    BrowserWindow: MockWindow,
+    protection,
+    preload: "/preload.js",
+    url: "http://localhost/",
+    onLoadError: assert.fail,
+  });
+
+  try {
+    overlay.window.webContents.emit("did-finish-load");
+
+    assert.match(
+      overlay.window.insertedCSS,
+      /cursor:\s*default\s*!important/
+    );
+  } finally {
+    // Cancel the renderer restoration timeout even if the assertion fails.
+    overlay.window.emit("closed");
+  }
+});
 
 test("missing Electron API is unsupported", () => {
   assert.equal(detectCapability({ ...windows, apiAvailable: false }).supported, false);
