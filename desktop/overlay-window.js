@@ -27,6 +27,19 @@ function createOverlayWindow({ BrowserWindow, protection, preload, url, onLoadEr
   window.setAlwaysOnTop(true, "floating");
   window.setSkipTaskbar(true); // Windows requires this call in addition to the constructor option to fully hide it
   protection.attach(window);
+  // NEW: Always display the arrow cursor inside the overlay.
+  // Buttons, links and other elements remain interactive.
+  window.webContents.on("did-finish-load", () => {
+    window.webContents.insertCSS(`
+      *,
+      *::before,
+      *::after {
+        cursor: default !important;
+      }
+    `).catch((error) => {
+      console.error("Failed to apply overlay cursor style:", error);
+    });
+  });
   window.once("ready-to-show", () => {
     ready = true;
     showWhenRestored();
