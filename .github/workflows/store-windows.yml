@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -14,6 +14,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - name: Bump desktop app patch version
+        shell: bash
+        working-directory: desktop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version patch --no-git-tag-version
+          git commit -am "chore: bump desktop version to $(node -p "require('./package.json').version")"
+          git push
       - run: npm --prefix frontend/react-web ci
       - run: npm --prefix desktop ci
       - run: npm --prefix desktop test
