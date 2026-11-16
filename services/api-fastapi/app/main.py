@@ -1,11 +1,14 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,6 +90,166 @@ app.add_middleware(
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 logger = logging.getLogger("techprep")
+MIN_EXTRACT_CONFIDENCE = 0.80
+QUESTION_EXTRACT_MAX_CHARS = 1600
+QUESTION_EXTRACT_CONTEXT_TAIL = 260
+ANSWER_DEDUP_TTL_SECONDS = 180
+CLASSIFIER_DEDUP_TTL_SECONDS = 45
+NO_ANSWER_SENTINEL = "NO_ANSWER"
+_FILLER_WORDS = {
+    "okay", "ok", "thanks", "thank", "you", "yes", "yeah", "yep", "right",
+    "sure", "fine", "alright", "understood", "understand", "got", "it", "cool", "hmm", "uh", "um",
+}
+_IGNORE_PATTERNS = (
+    r"\b(can you|could you)\s+share your screen\b",
+    r"\bcan you hear me\b",
+    r"\bhave i joined early\b",
+    r"\bthank you for your time\b",
+    r"\bit was nice meeting you\b",
+)
+_WAIT_SUFFIX = re.compile(r"\b(and|or|with|without|using|where|that|which|if|when|while|to)\s*$", re.IGNORECASE)
+_recent_answer_events: dict[tuple[str, str, str], tuple[float, str]] = {}
+_recent_classifier_events: dict[tuple[str, str, str], float] = {}
+_dedupe_lock = asyncio.Lock()
+
+
+class QuestionExtractionResult(BaseModel):
+    decision: Literal["ANSWER", "WAIT", "IGNORE"]
+    question: str = Field("", max_length=20000)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+def _extract_confidence_threshold() -> float:
+    raw = os.getenv("QUESTION_EXTRACT_MIN_CONFIDENCE")
+    if raw is None:
+        return MIN_EXTRACT_CONFIDENCE
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid QUESTION_EXTRACT_MIN_CONFIDENCE; using default %.2f", MIN_EXTRACT_CONFIDENCE)
+        return MIN_EXTRACT_CONFIDENCE
+    return max(0.0, min(1.0, value))
+
+
+def _normalize_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _recent_transcript_window(transcript: str, history: list["AnswerTurn"]) -> str:
+    normalized = _normalize_spaces(transcript)
+    if not normalized:
+        return ""
+    chunks = [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", normalized) if part.strip()]
+    if not chunks:
+        return normalized[-QUESTION_EXTRACT_MAX_CHARS:]
+    selected: list[str] = []
+    total = 0
+    for part in reversed(chunks):
+        cost = len(part) + (1 if selected else 0)
+        if total + cost > QUESTION_EXTRACT_MAX_CHARS:
+            break
+        selected.append(part)
+        total += cost
+        if total >= 320:
+            break
+    selected.reverse()
+    window = " ".join(selected).strip()
+    if len(window) <= 80 and len(chunks) >= 2 and history:
+        previous = chunks[-2][-QUESTION_EXTRACT_CONTEXT_TAIL:]
+        window = f"{previous} {window}".strip()
+    return window or normalized[-QUESTION_EXTRACT_MAX_CHARS:]
+
+
+def _deterministic_classification(transcript: str) -> QuestionExtractionResult | None:
+    normalized = _normalize_spaces(transcript)
+    if not normalized:
+        return QuestionExtractionResult(decision="WAIT", question="", confidence=0.95)
+    lowered = normalized.lower().strip(" .!?")
+    words = [w for w in re.sub(r"[^a-z\s]", " ", lowered).split() if w]
+    if words and len(words) <= 4 and all(word in _FILLER_WORDS for word in words):
+        return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
+    if lowered in {"i understand", "okay fine", "ok fine", "thank you", "thanks"}:
+        return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
+    if any(re.search(pattern, lowered) for pattern in _IGNORE_PATTERNS):
+        return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
+    if normalized.endswith("...") or _WAIT_SUFFIX.search(normalized):
+        return QuestionExtractionResult(decision="WAIT", question="", confidence=0.9)
+    return None
+
+
+def _is_short_followup(question: str) -> bool:
+    q = question.strip().lower().rstrip("?.!")
+    if not q:
+        return False
+    if q in {"why", "how", "and why", "what about that", "what about this", "what about it", "then"}:
+        return True
+    return q.startswith("why ") and len(q.split()) <= 4
+
+
+def _request_session_scope(req: "AnswerRequest", request: Request) -> str:
+    manual_scope = req.session_id.strip()
+    if manual_scope:
+        return manual_scope[:120]
+    sub = getattr(request.state, "subscription", None) or {}
+    if sub.get("session_start"):
+        return f"sub-{sub['session_start']}"
+    return "default"
+
+
+def _sha1(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _classifier_event_fingerprint(req: "AnswerRequest", transcript_window: str) -> str:
+    if req.utterance_id.strip():
+        return f"utterance:{req.utterance_id.strip()[:120]}"
+    history_tail = req.history[-1].question.strip() if req.history else ""
+    return f"window:{_sha1(_normalize_spaces(transcript_window))}:ctx:{_sha1(history_tail[-200:])}"
+
+
+def _answer_event_fingerprint(req: "AnswerRequest", transcript_window: str, question: str) -> str:
+    if req.utterance_id.strip():
+        return f"utterance:{req.utterance_id.strip()[:120]}:q:{_sha1(question.strip().lower())}"
+    history_tail = req.history[-1].question.strip() if req.history else ""
+    payload = f"{_normalize_spaces(transcript_window)}::{question.strip().lower()}::{history_tail[-160:]}"
+    return f"window:{_sha1(payload)}"
+
+
+async def _is_recent_classifier_event(user: str, scope: str, fingerprint: str) -> bool:
+    now = time.time()
+    key = (user, scope, fingerprint)
+    async with _dedupe_lock:
+        for k, expires in list(_recent_classifier_events.items()):
+            if expires <= now:
+                del _recent_classifier_events[k]
+        expires = _recent_classifier_events.get(key)
+        if expires and expires > now:
+            return True
+        _recent_classifier_events[key] = now + CLASSIFIER_DEDUP_TTL_SECONDS
+        return False
+
+
+async def _begin_answer_event(user: str, scope: str, fingerprint: str) -> bool:
+    now = time.time()
+    key = (user, scope, fingerprint)
+    async with _dedupe_lock:
+        for k, (expires, _) in list(_recent_answer_events.items()):
+            if expires <= now:
+                del _recent_answer_events[k]
+        state = _recent_answer_events.get(key)
+        if state and state[0] > now:
+            return False
+        _recent_answer_events[key] = (now + ANSWER_DEDUP_TTL_SECONDS, "pending")
+        return True
+
+
+async def _finish_answer_event(user: str, scope: str, fingerprint: str, success: bool) -> None:
+    key = (user, scope, fingerprint)
+    async with _dedupe_lock:
+        if success:
+            _recent_answer_events[key] = (time.time() + ANSWER_DEDUP_TTL_SECONDS, "done")
+        else:
+            _recent_answer_events.pop(key, None)
 
 
 class AnswerTurn(BaseModel):
@@ -100,6 +263,9 @@ class AnswerRequest(BaseModel):
     resume: str = Field("", max_length=15000)
     job_description: str = Field("", max_length=10000)
     history: list[AnswerTurn] = Field(default_factory=list, max_length=2)
+    session_id: str = Field("", max_length=120)
+    utterance_id: str = Field("", max_length=120)
+    question_source: str = Field("manual", max_length=32)
 
 
 class LoginRequest(BaseModel):
@@ -433,19 +599,69 @@ async def answer(
     req: AnswerRequest, request: Request, user: str = Depends(subscriptions.require_subscription)
 ) -> StreamingResponse:
     record_usage = UsageWriter(user)
-    question = req.question.strip()
-    if not question and not req.transcript.strip():
+    manual_question = req.question.strip()
+    if not manual_question and not req.transcript.strip():
         raise HTTPException(400, "Provide a question or transcript")
     await start_call(request, user)
-    if not question:
-        try:
-            question = (
-                await llm.complete(QUESTION_EXTRACT_PROMPT.format(transcript=req.transcript[-4000:]), on_usage=record_usage)
-            ).strip()
-        except Exception:
-            logger.exception("Question extraction failed")
+    session_scope = _request_session_scope(req, request)
+    extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=0.0)
+    transcript_window = ""
+    classifier = "manual"
+    answer_dedupe_fingerprint = ""
+    allow_manual_bypass = bool(manual_question and req.question_source != "transcript_auto")
+    if allow_manual_bypass:
+        extraction = QuestionExtractionResult(decision="ANSWER", question=manual_question, confidence=1.0)
+    else:
+        transcript_window = _recent_transcript_window(req.transcript, req.history)
+        if not transcript_window:
+            extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=1.0)
+            classifier = "empty"
+        else:
+            rule_result = _deterministic_classification(transcript_window)
+            if rule_result is not None:
+                extraction = rule_result
+                classifier = "rule"
+            else:
+                classifier = "llm"
+                classifier_fingerprint = _classifier_event_fingerprint(req, transcript_window)
+                if await _is_recent_classifier_event(user, session_scope, classifier_fingerprint):
+                    extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=1.0)
+                    classifier = "dedupe"
+                else:
+                    try:
+                        raw = await llm.complete(
+                            QUESTION_EXTRACT_PROMPT.format(transcript=transcript_window),
+                            json_mode=True,
+                            on_usage=record_usage,
+                        )
+                        extraction = QuestionExtractionResult.model_validate_json(raw.strip())
+                    except Exception:
+                        logger.exception("Question extraction failed")
+                        extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=0.0)
+                        classifier = "fallback-wait"
+        if extraction.decision == "ANSWER":
+            extraction.question = extraction.question.strip()
+            if not extraction.question:
+                extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=extraction.confidence)
+            elif extraction.confidence < _extract_confidence_threshold() and not (
+                req.history and _is_short_followup(extraction.question)
+            ):
+                extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=extraction.confidence)
+        else:
+            extraction.question = ""
+
+    question = extraction.question.strip() if extraction.decision == "ANSWER" else ""
+    if extraction.decision == "ANSWER" and not allow_manual_bypass:
+        answer_dedupe_fingerprint = _answer_event_fingerprint(req, transcript_window, question)
+        if not await _begin_answer_event(user, session_scope, answer_dedupe_fingerprint):
+            extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=1.0)
             question = ""
-        question = question or req.transcript[-500:]
+            logger.info("answer.skip_duplicate user=%s scope=%s", user, session_scope)
+
+    logger.info(
+        "answer.classification user=%s decision=%s conf=%.2f source=%s qlen=%d tlen=%d",
+        user, extraction.decision, extraction.confidence, classifier, len(question), len(transcript_window),
+    )
 
     system = SYSTEM_PROMPT.format(
         resume=req.resume or "(not provided)",
@@ -462,6 +678,10 @@ async def answer(
 
     async def events():
         yield f"event: question\ndata: {json.dumps(question)}\n\n"
+        if extraction.decision != "ANSWER":
+            await record_usage.flush()
+            yield "event: done\ndata: \"\"\n\n"
+            return
         full_tokens: list[str] = []
         stream_failed = False
         try:
@@ -479,11 +699,14 @@ async def answer(
             yield f"event: error\ndata: {json.dumps(text)}\n\n"
         await record_usage.flush()
         answered_text = "".join(full_tokens).strip()
-        if not stream_failed and question and answered_text:
+        is_saveable_answer = bool(answered_text and answered_text != NO_ANSWER_SENTINEL)
+        if not stream_failed and question and is_saveable_answer:
             try:
                 await run_in_threadpool(history_module.save_interview_qa, user, question, answered_text)
             except Exception:
                 logger.exception("Could not auto-save question and answer to interview history")
+        if answer_dedupe_fingerprint:
+            await _finish_answer_event(user, session_scope, answer_dedupe_fingerprint, not stream_failed and is_saveable_answer)
         yield "event: done\ndata: \"\"\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")

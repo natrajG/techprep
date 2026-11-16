@@ -85,6 +85,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const transcriptEpochRef = useRef(0);
   const transcriptionQueueRef = useRef(Promise.resolve());
   const transcriptRef = useRef("");
+  const answerSessionIdRef = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
   const lastAnsweredRef = useRef("");
   const autoAnswerPendingRef = useRef(null);
   const activityVersionRef = useRef(0);
@@ -318,6 +319,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     transcriptRef.current = "";
     lastAnsweredRef.current = "";
     autoAnswerPendingRef.current = null;
+    answerSessionIdRef.current = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     setTranscript("");
   }
 
@@ -486,6 +488,10 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     }
     const requestedTranscript = autoTranscript ?? transcriptRef.current;
     const requestedQuestion = autoTranscript === null ? manualQ : "";
+    const utteranceId = autoTranscript === null
+      ? ""
+      : `${captureSessionRef.current}:${transcriptEpochRef.current}:${activityVersionRef.current}`;
+    const questionSource = requestedQuestion.trim() ? "manual" : "transcript_auto";
     if (!requestedQuestion.trim() && !requestedTranscript.trim()) {
       setStatus("No speech captured yet. Check the meeting's speaker output or type a question.");
       return;
@@ -508,6 +514,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         body: JSON.stringify({
           question: requestedQuestion, transcript: requestedTranscript,
           resume, job_description: jd, history: historyRef.current,
+          session_id: answerSessionIdRef.current, utterance_id: utteranceId, question_source: questionSource,
         }),
       }, fetch, localStorage, notifyExpired);
       if (!r.ok) {
@@ -588,37 +595,38 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       : !desktop
         ? "The browser requires a screen/tab picker: choose the meeting tab and enable tab audio."
         : "Captures the configured audio source for transcription.";
+  const hoverTitle = (text) => (desktop ? undefined : text);
 
   const panel = (
     <main className={`hud${desktop ? " hud-desktop" : ""}`} style={{ "--hud-opacity": opacity }}>
       <div className={`hud-bar${desktop ? " hud-drag" : ""}`}>
         <button className={`hud-pill hud-listen${listening ? " on" : ""}`} onClick={listening || captureStarting ? stopListening : startListening}
-          title={listening ? "Stop listening" : captureStarting ? "Cancel capture setup" : desktop ? "Listen to system audio" : "Listen to meeting tab"}>
+          title={hoverTitle(listening ? "Stop listening" : captureStarting ? "Cancel capture setup" : "Listen to meeting tab")}>
           <span className={`hud-dot${listening ? " live" : ""}`} />
           {listening ? "Stop" : captureStarting ? "Cancel" : "Listen"}
         </button>
-        <button className="hud-pill" disabled={busy} onClick={() => getAnswer()} title="Get answer (Enter)">
+        <button className="hud-pill" disabled={busy} onClick={() => getAnswer()} title={hoverTitle("Get answer (Enter)")}>
           {busy ? "Thinking…" : "Answer"} <kbd>↵</kbd>
         </button>
-        <button className="hud-pill" onClick={clearTranscript} title="Clear transcript">Clear</button>
-        <button className="hud-pill" onClick={() => setShowHistoryModal(true)} title="Interview Question History & Prep">
+        <button className="hud-pill" onClick={clearTranscript} title={hoverTitle("Clear transcript")}>Clear</button>
+        <button className="hud-pill" onClick={() => setShowHistoryModal(true)} title={hoverTitle("Interview Question History & Prep")}>
           📚 History
         </button>
         <span className="hud-spacer" />
         <button
           className="hud-pill hud-profile-pill"
           onClick={openProfile}
-          title="Account Profile & Credits"
+          title={hoverTitle("Account Profile & Credits")}
         >
           <span className="hud-profile-dot" style={{ background: subscription ? "#4ade80" : "#f87171" }} />
           <span>{currentUser || "Profile"}</span>
           <span className="hud-plan-tag">{subscription ? subscription.plan_name.split(" ")[0] : "Free"}</span>
         </button>
-        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title="Quick Settings" aria-expanded={menuOpen}>⋮</button>
+        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title={hoverTitle("Quick Settings")} aria-expanded={menuOpen}>⋮</button>
         {desktop ? (
           <>
-            <button className="hud-icon" onClick={() => desktop.minimize()} title="Minimize">–</button>
-            <button className="hud-pill hud-end" onClick={() => desktop.close()} title="Close">End</button>
+            <button className="hud-icon" onClick={() => desktop.minimize()} title={hoverTitle("Minimize")}>–</button>
+            <button className="hud-pill hud-end" onClick={() => desktop.close()} title={hoverTitle("Close")}>End</button>
           </>
         ) : null}
       </div>
@@ -792,7 +800,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
             <button
               className="hud-pill hud-pill--subtle"
               onClick={handleEndSession}
-              title="Clear desktop session. Saved questions remain in your history."
+              title={hoverTitle("Clear desktop session. Saved questions remain in your history.")}
               style={{ fontSize: 11, padding: "4px 8px", color: "#fca5a5", whiteSpace: "nowrap" }}
             >
               🔄 End Session ({qaLog.length + (question || answer ? 1 : 0)})
@@ -848,7 +856,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
 
         {/* Floating jump to latest answer button when user scrolls up to review earlier questions */}
         {!followAnswer && (qaLog.length > 0 || answer) && (
-          <button className="hud-scroll-down-btn" onClick={scrollToBottom} title="Scroll to latest question">
+          <button className="hud-scroll-down-btn" onClick={scrollToBottom} title={hoverTitle("Scroll to latest question")}>
             ⬇ Jump to latest answer
           </button>
         )}

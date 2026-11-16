@@ -323,7 +323,7 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
             }, headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(calls[0][1], "Explain the first program")
-        self.assertIn("return only the working program", calls[0][0])
+        self.assertIn("return only a working code block", calls[0][0])
         self.assertEqual(calls[0][2], [
             {"role": "user", "content": history[0]["question"]},
             {"role": "assistant", "content": history[0]["answer"]},
