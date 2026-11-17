@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import BrandMark from "./BrandMark";
 import AdminFeedback from "./AdminFeedback";
 import AdminPlans from "./AdminPlans";
 import { fetchAdminUsers, grantAdminSubscription, revokeAdminSubscription, deleteAdminUser } from "./admin.mjs";
@@ -138,36 +139,32 @@ export default function AdminDashboard({ user, onSignOut }) {
   const pagedUsers = filteredUsers.slice((safePage - 1) * USERS_PER_PAGE, safePage * USERS_PER_PAGE);
 
   return (
-    <div style={styles.container}>
+    <div className="tp-dashboard tp-admin">
+      <a className="tp-skip" href="#admin-content">Skip to admin workspace</a>
       {/* Admin Navbar */}
-      <header style={styles.navbar}>
-        <div style={styles.navBrand}>
-          <div style={styles.logoBadge}>TP</div>
-          <div>
-            <h1 style={styles.brandTitle}>TechPrep</h1>
-            <span style={styles.adminBadge}>🛡️ Admin Console</span>
-          </div>
-        </div>
+      <header className="tp-workspace-nav tp-admin-nav">
+        <div className="tp-brand"><BrandMark />TechPrep <span className="tp-pill tp-pill-violet">ADMIN</span></div>
 
-        <div style={styles.navUser}>
+        <div className="tp-admin-user">
           <div style={styles.userPill}>
             <span style={styles.adminDot} />
             <span style={styles.userName}>{user}</span>
             <span style={styles.adminRoleTag}>SuperAdmin</span>
           </div>
-          <button style={styles.signOutBtn} onClick={onSignOut}>
+          <button className="tp-btn" onClick={onSignOut}>
             Sign Out
           </button>
         </div>
       </header>
 
       {/* Main Container */}
-      <main style={styles.main}>
+      <main className="tp-workspace" id="admin-content">
+        <header className="tp-welcome"><div><span className="tp-eyebrow">OPERATIONS WORKSPACE</span><h1>A clearer view of your platform.</h1><p>Manage accounts, plans, and feedback in one place.</p></div></header>
         {/* Top Summary Metrics */}
         {summary && (
           <div style={styles.metricGrid}>
             <div style={{ ...styles.metricCard, border: "1px solid rgba(74, 222, 128, 0.3)", background: "rgba(34, 197, 94, 0.08)" }}>
-              <span style={{ ...styles.metricLabel, color: "#86efac" }}>💳 Actual Payment Revenue</span>
+              <span style={{ ...styles.metricLabel, color: "#86efac" }}>Actual payment revenue</span>
               <strong style={{ ...styles.metricValue, color: "#4ade80" }}>
                 ₹{(summary.actual_payment_revenue || 0).toLocaleString()}
               </strong>
@@ -178,7 +175,7 @@ export default function AdminDashboard({ user, onSignOut }) {
             </div>
 
             <div style={{ ...styles.metricCard, border: "1px solid rgba(168, 85, 247, 0.3)", background: "rgba(168, 85, 247, 0.08)" }}>
-              <span style={{ ...styles.metricLabel, color: "#d8b4fe" }}>🎁 Backend Grants / Free Passes</span>
+              <span style={{ ...styles.metricLabel, color: "#d8b4fe" }}>Grants / free passes</span>
               <strong style={{ ...styles.metricValue, color: "#c084fc" }}>
                 {summary.total_granted_orders || 0}
               </strong>
@@ -249,9 +246,10 @@ export default function AdminDashboard({ user, onSignOut }) {
                   View all registered users, their AI token burn, active plans, and complete recharge history.
                 </p>
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", maxWidth: "100%" }}>
                 <input
                   type="text"
+                  aria-label="Search users"
                   placeholder="Search username or email…"
                   value={search}
                   onChange={(e) => {
@@ -685,66 +683,46 @@ export default function AdminDashboard({ user, onSignOut }) {
 }
 
 const styles = {
-  container: { minHeight: "100vh", background: "#0b0f19", color: "#f8fafc", fontFamily: "system-ui, sans-serif" },
-  navbar: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "14px 28px", background: "rgba(15, 23, 42, 0.8)", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-    backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 50,
-  },
-  navBrand: { display: "flex", alignItems: "center", gap: 12 },
-  logoBadge: {
-    width: 38, height: 38, borderRadius: 10, background: "linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%)",
-    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 16,
-    boxShadow: "0 0 16px rgba(79, 70, 229, 0.4)",
-  },
-  brandTitle: { margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", color: "#f8fafc" },
-  adminBadge: { fontSize: 11, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.04em", textTransform: "uppercase" },
-  navUser: { display: "flex", alignItems: "center", gap: 12 },
   userPill: {
     display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderRadius: 9999,
     background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(255, 255, 255, 0.08)", fontSize: 13,
   },
-  adminDot: { width: 8, height: 8, borderRadius: "50%", background: "#38bdf8", boxShadow: "0 0 8px #38bdf8" },
+  adminDot: { width: 8, height: 8, borderRadius: "50%", background: "#b3a3fa", boxShadow: "0 0 8px #38bdf8" },
   userName: { fontWeight: 600, color: "#e2e8f0" },
   adminRoleTag: {
     fontSize: 10, fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: 4,
-    background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8",
+    background: "rgba(56, 189, 248, 0.15)", color: "#b3a3fa",
   },
-  signOutBtn: {
-    padding: "7px 14px", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 8,
-    background: "rgba(255, 255, 255, 0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: 12, fontWeight: 600,
-  },
-  main: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" },
   metricGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 24 },
   metricCard: {
-    background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(255, 255, 255, 0.06)",
-    borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6,
+    background: "#191820", border: "1px solid #2b2c3a",
+    borderRadius: 14, padding: "20px", display: "flex", flexDirection: "column", gap: 6,
   },
-  metricLabel: { fontSize: 12, color: "#94a3b8", fontWeight: 500 },
+  metricLabel: { fontSize: 12, color: "#aaa4bc", fontWeight: 500 },
   metricValue: { fontSize: 24, fontWeight: 800, color: "#f8fafc" },
   tabBar: { display: "flex", gap: 8, borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: 12, marginBottom: 20, overflowX: "auto" },
   tabBtn: {
     padding: "9px 16px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.08)",
-    background: "rgba(30, 41, 59, 0.4)", color: "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer",
+    background: "#17161e", color: "#b8afc7", fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0,
   },
   tabBtnActive: {
-    padding: "9px 16px", borderRadius: 8, border: "1px solid #4f46e5",
-    background: "linear-gradient(135deg, rgba(79, 70, 229, 0.3) 0%, rgba(6, 182, 212, 0.2) 100%)",
-    color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+    padding: "9px 16px", borderRadius: 8, border: "1px solid #8e78bf",
+    background: "#a99cff15",
+    color: "#e4d8ff", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0,
   },
   sectionCard: {
-    background: "rgba(30, 41, 59, 0.4)", border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 14, padding: 22,
+    background: "#14151d", border: "1px solid #2b2c3a",
+    borderRadius: 18, padding: 22, minWidth: 0,
   },
   sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14, marginBottom: 18 },
   sectionTitle: { margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#f8fafc" },
-  sectionSubtitle: { margin: 0, fontSize: 13, color: "#94a3b8" },
+  sectionSubtitle: { margin: 0, fontSize: 13, color: "#aaa4bc" },
   searchInput: {
     padding: "8px 14px", borderRadius: 8, border: "1px solid #475569", background: "#151b2b",
     color: "#fff", fontSize: 13, width: 220,
   },
   refreshBtn: {
-    padding: "8px 14px", borderRadius: 8, border: 0, background: "#334155", color: "#fff",
+    padding: "8px 14px", borderRadius: 8, border: 0, background: "#3b3749", color: "#fff",
     fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   tableWrapper: { overflowX: "auto" },
@@ -756,7 +734,7 @@ const styles = {
     color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
-  th: { padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#94a3b8", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
+  th: { padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#aaa4bc", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid rgba(255, 255, 255, 0.05)" },
   td: { padding: "12px 14px", fontSize: 13, color: "#e2e8f0", verticalAlign: "middle" },
   paidRevenueTag: {
@@ -766,7 +744,7 @@ const styles = {
   },
   freeRevenueTag: {
     padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600,
-    background: "rgba(148, 163, 184, 0.1)", color: "#94a3b8", display: "inline-block",
+    background: "rgba(148, 163, 184, 0.1)", color: "#aaa4bc", display: "inline-block",
   },
   activePaidTag: {
     padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
@@ -790,20 +768,16 @@ const styles = {
     padding: "2px 8px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#7dd3fc",
     fontSize: 10, fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)",
   },
-  activeTag: {
-    padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
-    background: "rgba(74, 222, 128, 0.15)", color: "#86efac", display: "inline-block",
-  },
   inactiveTag: {
     padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600,
-    background: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", display: "inline-block",
+    background: "rgba(148, 163, 184, 0.15)", color: "#aaa4bc", display: "inline-block",
   },
   historyBtn: {
     padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.12)",
-    background: "rgba(255, 255, 255, 0.05)", color: "#cbd5e1", fontSize: 12, cursor: "pointer",
+    background: "rgba(255, 255, 255, 0.05)", color: "#d3cedf", fontSize: 12, cursor: "pointer",
   },
   grantBtn: {
-    padding: "5px 10px", borderRadius: 6, border: 0, background: "#4f46e5", color: "#fff",
+    padding: "5px 10px", borderRadius: 6, border: 0, background: "#7058db", color: "#fff",
     fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   revokeBtn: {
@@ -815,21 +789,20 @@ const styles = {
     background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   historyDrawer: {
-    marginTop: 18, padding: 18, borderRadius: 10, background: "#0f172a",
+    marginTop: 18, padding: 18, borderRadius: 10, background: "#101119",
     border: "1px solid rgba(56, 189, 248, 0.2)",
   },
   closeDrawerBtn: {
-    padding: "4px 8px", borderRadius: 6, border: 0, background: "#334155", color: "#cbd5e1",
+    padding: "4px 8px", borderRadius: 6, border: 0, background: "#3b3749", color: "#d3cedf",
     fontSize: 11, cursor: "pointer",
   },
   subTable: { width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" },
-  subTh: { padding: "6px 10px", borderBottom: "1px solid #334155", color: "#94a3b8" },
+  subTh: { padding: "6px 10px", borderBottom: "1px solid #334155", color: "#aaa4bc" },
   subTd: { padding: "6px 10px", borderBottom: "1px solid rgba(255, 255, 255, 0.04)", color: "#e2e8f0" },
-  verifiedBadge: { padding: "2px 6px", borderRadius: 4, background: "rgba(74, 222, 128, 0.15)", color: "#86efac", fontSize: 10, fontWeight: 700 },
   pendingBadge: { padding: "2px 6px", borderRadius: 4, background: "rgba(250, 204, 21, 0.15)", color: "#fde047", fontSize: 10, fontWeight: 700 },
   grantForm: { display: "flex", flexDirection: "column", gap: 14, maxWidth: 700 },
   formRow: { display: "flex", gap: 14, flexWrap: "wrap" },
-  formLabel: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#cbd5e1", flex: 1, minWidth: 200 },
+  formLabel: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#d3cedf", flex: 1, minWidth: 200 },
   formSelect: {
     padding: "9px 12px", borderRadius: 8, border: "1px solid #475569", background: "#151b2b",
     color: "#fff", fontSize: 13,

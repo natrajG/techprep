@@ -3,6 +3,7 @@ import unittest
 import tempfile
 import hashlib
 import hmac
+import secrets
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -22,12 +23,46 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         )
+        self.payments = {}
+        self.gateway_env = patch.dict(os.environ, {
+            "RAZORPAY_KEY_ID": "rzp_test_suite", "RAZORPAY_KEY_SECRET": "suite-secret",
+        })
+        self.gateway_env.start()
+        self.addCleanup(self.gateway_env.stop)
+        self.gateway = patch.object(subscriptions, "razorpay_request", side_effect=self.provider_request)
+        self.gateway.start()
+        self.addCleanup(self.gateway.stop)
         self.username = "testuser_win"
         self.token = auth.issue_token(self.username)
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
     async def asyncTearDown(self):
         await self.client.aclose()
+
+    def provider_request(self, method, path, **kwargs):
+        if method == "POST":
+            return {"id": "order_" + secrets.token_hex(8),
+                    "amount": kwargs["json"]["amount"], "currency": "INR"}
+        return self.payments[path.rsplit("/", 1)[-1]]
+
+    def payment_payload(self, order):
+        payment_id = "pay_" + secrets.token_hex(8)
+        self.payments[payment_id] = {
+            "id": payment_id, "order_id": order["razorpay_order_id"],
+            "status": "captured", "currency": "INR", "amount": order["amount"] * 100,
+        }
+        signature = hmac.new(
+            os.environ["RAZORPAY_KEY_SECRET"].encode(),
+            f"{order['razorpay_order_id']}|{payment_id}".encode(), hashlib.sha256,
+        ).hexdigest()
+        return {"order_id": order["order_id"], "razorpay_payment_id": payment_id,
+                "razorpay_signature": signature}
+
+    async def verify_order(self, order, headers=None):
+        return await self.client.post(
+            "/api/v1/subscription/verify", json=self.payment_payload(order),
+            headers=headers or self.headers,
+        )
 
     async def test_list_plans_public(self):
         res = await self.client.get("/api/v1/subscription/plans")
@@ -79,23 +114,20 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                 json={"amount": 2499, "call_limit": 15, "duration_days": 45}, headers=admin,
             )
         self.assertEqual(updated.status_code, 200)
-        self.assertEqual(old_order["amount"], 1999)
-        old_sub = await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": old_order["order_id"], "utr_ref": "123456789001"}, headers=self.headers,
-        )
+        self.assertEqual(old_order["amount"], 2001)
+        old_sub = await self.verify_order(old_order)
         self.assertEqual(old_sub.status_code, 200)
         old_status = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
         self.assertEqual(old_status["calls_total"], 30)
-        self.assertEqual(old_status["amount"], 1999)
+        self.assertEqual(old_status["amount"], 2001)
         self.assertAlmostEqual(old_status["time_remaining_seconds"], 30 * 86400, delta=2)
 
         new_order = (await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=self.headers
         )).json()
-        self.assertEqual(new_order["amount"], 2499)
+        self.assertEqual(new_order["amount"], 2501)
         self.assertEqual(new_order["plan"]["call_limit"], 15)
-        self.assertIn("am=2499", new_order["upi_uri"])
+        self.assertEqual(new_order["payment_mode"], "razorpay")
         with patch.dict("os.environ", {"APP_USERNAME": "operator"}):
             await self.client.put(
                 "/api/v1/subscription/plans/monthly",
@@ -103,13 +135,10 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual((await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()
                          ["subscription"]["calls_total"], 30)
-        await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": new_order["order_id"], "utr_ref": "123456789002"}, headers=self.headers,
-        )
+        await self.verify_order(new_order)
         new_status = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
         self.assertEqual(new_status["calls_total"], 15)
-        self.assertEqual(new_status["amount"], 2499)
+        self.assertEqual(new_status["amount"], 2501)
         self.assertAlmostEqual(new_status["time_remaining_seconds"], 45 * 86400, delta=2)
 
     async def test_existing_legacy_subscription_keeps_unlimited_calls(self):
@@ -140,23 +169,17 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
                 "/api/v1/subscription/plans/hourly_call",
                 json={"amount": 399, "duration_minutes": 90}, headers=admin,
             )
-        self.assertEqual((await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": old_order["order_id"], "utr_ref": "123456789003"}, headers=self.headers,
-        )).status_code, 200)
+        self.assertEqual((await self.verify_order(old_order)).status_code, 200)
         old = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
         self.assertEqual(old["call_duration_minutes"], 60)
-        self.assertEqual(old["amount"], 199)
+        self.assertEqual(old["amount"], 201)
 
         new_order = (await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
         )).json()
-        self.assertEqual(new_order["amount"], 399)
+        self.assertEqual(new_order["amount"], 401)
         self.assertEqual(new_order["plan"]["duration_minutes"], 90)
-        self.assertEqual((await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": new_order["order_id"], "utr_ref": "123456789004"}, headers=self.headers,
-        )).status_code, 200)
+        self.assertEqual((await self.verify_order(new_order)).status_code, 200)
         with patch.object(llm, "transcribe", AsyncMock(return_value="")):
             self.assertEqual((await self.client.post(
                 "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
@@ -180,15 +203,11 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(order_res.status_code, 200)
         order_data = order_res.json()
         self.assertIn("order_id", order_data)
-        self.assertIn("upi_uri", order_data)
-        self.assertEqual(order_data["amount"], 199)
+        self.assertEqual(order_data["payment_mode"], "razorpay")
+        self.assertEqual(order_data["amount"], 201)
 
         # Verify payment
-        verify_res = await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": order_data["order_id"], "utr_ref": "123456789005"},
-            headers=self.headers,
-        )
+        verify_res = await self.verify_order(order_data)
         self.assertEqual(verify_res.status_code, 200)
         self.assertEqual(verify_res.json()["status"], "success")
 
@@ -199,17 +218,33 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sub_status["has_active"])
         self.assertEqual(sub_status["subscription"]["plan_id"], "hourly_call")
 
-    async def test_test_user_requires_twelve_digit_utr(self):
+    async def test_reserved_test_username_cannot_bypass_payment_with_utr(self):
         order = (await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
         )).json()
-        self.assertEqual(order["payment_mode"], "test_utr")
-        for utr in ("12345678901", "12345678901A", "1234567890123", " 123456789012"):
-            response = await self.client.post(
-                "/api/v1/subscription/verify",
-                json={"order_id": order["order_id"], "utr_ref": utr}, headers=self.headers,
+        self.assertEqual(order["payment_mode"], "razorpay")
+        response = await self.client.post(
+            "/api/v1/subscription/verify",
+            json={"order_id": order["order_id"], "utr_ref": "123456789012"}, headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse((await self.client.get(
+            "/api/v1/subscription/status", headers=self.headers
+        )).json()["has_active"])
+
+    async def test_legacy_utr_order_without_provider_cannot_activate(self):
+        with subscriptions.get_db() as conn:
+            conn.execute(
+                """INSERT INTO payment_orders
+                   (order_id, username, plan_id, amount, upi_uri, status, created_at)
+                   VALUES ('legacy-test', ?, 'monthly', 1999, '', 'pending', 1)""",
+                (self.username,),
             )
-            self.assertEqual(response.status_code, 422)
+        response = await self.client.post(
+            "/api/v1/subscription/verify",
+            json={"order_id": "legacy-test", "utr_ref": "123456789012"}, headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 422)
         self.assertFalse((await self.client.get(
             "/api/v1/subscription/status", headers=self.headers
         )).json()["has_active"])
@@ -300,10 +335,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=self.headers
         )
         with patch("app.subscriptions.time.time", return_value=1000):
-            verified = await self.client.post(
-                "/api/v1/subscription/verify",
-                json={"order_id": order.json()["order_id"], "utr_ref": "123456789006"}, headers=self.headers,
-            )
+            verified = await self.verify_order(order.json())
         self.assertEqual(verified.status_code, 200)
         with patch("app.subscriptions.time.time", return_value=1000):
             await self.client.get("/api/v1/downloads/windows", headers=self.headers)
@@ -357,10 +389,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         renewal = await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "monthly"}, headers=self.headers
         )
-        self.assertEqual((await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": renewal.json()["order_id"], "utr_ref": "123456789007"}, headers=self.headers,
-        )).status_code, 200)
+        self.assertEqual((await self.verify_order(renewal.json())).status_code, 200)
         renewed = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()
         self.assertEqual(renewed["subscription"]["calls_remaining"], 30)
         self.assertEqual(renewed["token_usage"]["total_tokens"], 132)
@@ -394,10 +423,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         order = await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
         )
-        await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": order.json()["order_id"], "utr_ref": "123456789009"}, headers=self.headers,
-        )
+        await self.verify_order(order.json())
         with patch.dict("os.environ", {"ENFORCE_SUBSCRIPTIONS": "true"}):
             with patch.object(llm, "transcribe", AsyncMock(return_value="")):
                 await self.client.post(
@@ -410,20 +436,76 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             first_beat = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
             self.assertEqual(first_beat.json()["extended_seconds"], 0)
 
-            # Simulate a disconnect: push last_heartbeat_at back in time.
-            with subscriptions.get_db() as conn:
-                conn.execute(
-                    "UPDATE subscriptions SET last_heartbeat_at = last_heartbeat_at - 300 WHERE username = ?",
-                    (self.username,),
-                )
-
-            second_beat = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+            # Simulate a real disconnect with no AI activity during the gap.
+            with patch("app.subscriptions.time.time", return_value=int(subscriptions.time.time()) + 1):
+                await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+            with patch("app.subscriptions.time.time", return_value=int(subscriptions.time.time()) + 300):
+                second_beat = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
             extended = second_beat.json()["extended_seconds"]
             self.assertGreater(extended, 0)
 
             after = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
             self.assertGreater(after["valid_until"], before["valid_until"])
             self.assertAlmostEqual(after["valid_until"] - before["valid_until"], extended, delta=1)
+
+    async def test_ai_activity_during_heartbeat_gap_is_not_refunded(self):
+        order = (await self.client.post(
+            "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers,
+        )).json()
+        await self.verify_order(order)
+        with patch.object(llm, "transcribe", AsyncMock(return_value="")):
+            await self.client.post(
+                "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
+            )
+            now = int(subscriptions.time.time())
+            with patch("app.subscriptions.time.time", return_value=now + 10):
+                await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+            with patch("app.subscriptions.time.time", return_value=now + 50):
+                await self.client.post(
+                    "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
+                )
+            with patch("app.subscriptions.time.time", return_value=now + 100):
+                response = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        self.assertEqual(response.json()["extended_seconds"], 0)
+
+    async def test_purchased_call_pause_refund_has_cumulative_cap(self):
+        order = (await self.client.post(
+            "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers,
+        )).json()
+        await self.verify_order(order)
+        with patch.object(llm, "transcribe", AsyncMock(return_value="")):
+            await self.client.post(
+                "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
+            )
+        now = int(subscriptions.time.time())
+        with subscriptions.get_db() as conn:
+            conn.execute(
+                "UPDATE subscriptions SET paused_seconds = ? WHERE username = ?",
+                (subscriptions.MAX_PAUSE_EXTENSION_SECONDS - 2, self.username),
+            )
+        with patch("app.subscriptions.time.time", return_value=now + 10):
+            await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        with patch("app.subscriptions.time.time", return_value=now + 300):
+            response = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        self.assertEqual(response.json()["extended_seconds"], 2)
+        with patch("app.subscriptions.time.time", return_value=now + 400):
+            response = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        self.assertEqual(response.json()["extended_seconds"], 0)
+
+    async def test_trial_window_cannot_be_extended_by_heartbeats(self):
+        subscriptions.grant_free_trial(self.username)
+        with patch.object(llm, "transcribe", AsyncMock(return_value="")):
+            await self.client.post(
+                "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
+            )
+        before = subscriptions.get_active_subscription(self.username)["valid_until"]
+        now = int(subscriptions.time.time())
+        with patch("app.subscriptions.time.time", return_value=now + 10):
+            await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        with patch("app.subscriptions.time.time", return_value=now + 300):
+            response = await self.client.post("/api/v1/subscription/heartbeat", headers=self.headers)
+        self.assertEqual(response.json()["extended_seconds"], 0)
+        self.assertEqual(subscriptions.get_active_subscription(self.username)["valid_until"], before)
 
     async def test_signup_grants_a_one_time_free_trial(self):
         with patch.dict(os.environ, {"APP_ENV": "development", "ALLOW_SIGNUP": "true"}):
@@ -482,10 +564,7 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
         order = await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
         )
-        await self.client.post(
-            "/api/v1/subscription/verify",
-            json={"order_id": order.json()["order_id"], "utr_ref": "123456789008"}, headers=self.headers,
-        )
+        await self.verify_order(order.json())
         with patch.dict("os.environ", {"ENFORCE_SUBSCRIPTIONS": "true"}):
             response = await self.client.get("/api/v1/subscription/status", headers=self.headers)
             self.assertEqual(response.json()["subscription"]["calls_remaining"], 1)

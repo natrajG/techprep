@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
 import { fetchMockFeedback, fetchNextQuestion } from "./mock-interview.mjs";
 import { getMicStream, startSingleTakeRecording } from "./mock-recorder.mjs";
 
@@ -128,14 +130,14 @@ export default function MockInterview({ onClose }) {
   }
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.panel}>
-        <div style={styles.header}>
+    <Dialog label="Mock interview practice" onClose={onClose} style={{ maxWidth: 720 }}>
+        <div className="tp-dialog-heading">
           <div>
-            <h2 style={styles.title}>✨ Mock Interview Practice</h2>
+            <span className="tp-eyebrow">PRACTICE WITH PURPOSE</span>
+            <h2>Find your voice.</h2>
             <p style={styles.subtitle}>Free read-aloud coaching · up to 20 questions a day · English only</p>
           </div>
-          <button style={styles.closeBtn} onClick={onClose} title="Close">✕</button>
+          <button className="tp-btn" onClick={onClose} aria-label="Close mock interview"><Icon name="close" size={18} /></button>
         </div>
 
         <div style={styles.body}>
@@ -155,7 +157,7 @@ export default function MockInterview({ onClose }) {
                 We'll generate a question, speak it aloud, and show you a model answer to practice
                 explaining in your own words. Record yourself, and get feedback on pace and delivery.
               </p>
-              <button style={styles.primaryBtn} onClick={start}>Start Practicing →</button>
+              <button className="tp-btn tp-btn-primary" onClick={start}>Start practicing <Icon name="arrow" size={16} /></button>
             </div>
           )}
 
@@ -228,36 +230,12 @@ export default function MockInterview({ onClose }) {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
 const styles = {
-  overlay: {
-    position: "fixed", inset: 0, background: "rgba(5, 6, 12, 0.78)", backdropFilter: "blur(6px)",
-    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20,
-  },
-  panel: {
-    width: 720, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
-    background: "linear-gradient(165deg, rgba(24, 20, 45, 0.95) 0%, rgba(13, 16, 28, 0.97) 60%)",
-    border: "1px solid rgba(167, 139, 250, 0.25)", borderRadius: 20, color: "#f8fafc",
-    boxShadow: "0 30px 90px rgba(99, 102, 241, 0.25), 0 0 0 1px rgba(255,255,255,0.03) inset",
-  },
-  header: {
-    display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-    padding: "22px 26px 16px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  title: {
-    margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em",
-    background: "linear-gradient(135deg, #c4b5fd 0%, #38bdf8 100%)",
-    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
-  },
   subtitle: { margin: "6px 0 0", fontSize: 12.5, color: "#a5b4cf" },
-  closeBtn: {
-    background: "rgba(255, 255, 255, 0.06)", border: "1px solid rgba(255, 255, 255, 0.1)",
-    color: "#cbd5e1", borderRadius: 999, width: 30, height: 30, cursor: "pointer", flexShrink: 0,
-  },
   body: { padding: "22px 26px 28px", display: "flex", flexDirection: "column", gap: 18 },
   introCard: { display: "flex", flexDirection: "column", gap: 14 },
   label: { display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5, color: "#dbe2f5", fontWeight: 600 },
@@ -268,17 +246,17 @@ const styles = {
   },
   introHint: { margin: 0, fontSize: 12.5, color: "#8fa0c6", lineHeight: 1.6 },
   primaryBtn: {
-    background: "linear-gradient(135deg, #a78bfa 0%, #38bdf8 100%)", color: "#0b0c14", border: "none",
+    background: "#7058db", color: "#ffffff", border: "none",
     padding: "11px 20px", borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: "pointer",
     boxShadow: "0 10px 28px rgba(99, 102, 241, 0.35)",
   },
   secondaryBtn: {
     background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.14)",
-    color: "#cbd5e1", padding: "11px 18px", borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: "pointer",
+    color: "#d3cedf", padding: "11px 18px", borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: "pointer",
   },
   ghostBtn: {
     background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
-    color: "#cbd5e1", borderRadius: 999, width: 30, height: 30, cursor: "pointer", flexShrink: 0, fontSize: 13,
+    color: "#d3cedf", borderRadius: 999, width: 30, height: 30, cursor: "pointer", flexShrink: 0, fontSize: 13,
   },
   counterRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   counterPill: {
@@ -314,10 +292,10 @@ const styles = {
     background: "rgba(0, 0, 0, 0.2)", borderRadius: 10, padding: "8px 16px",
     display: "flex", flexDirection: "column", gap: 2,
   },
-  statLabel: { fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.04em" },
+  statLabel: { fontSize: 11, color: "#aaa4bc", textTransform: "uppercase", letterSpacing: "0.04em" },
   statValue: { fontSize: 16, fontWeight: 800, color: "#7dd3fc" },
   feedbackText: { margin: 0, fontSize: 13.5, lineHeight: 1.7, color: "#e2e8f0" },
-  transcriptDetails: { fontSize: 12.5, color: "#94a3b8" },
+  transcriptDetails: { fontSize: 12.5, color: "#aaa4bc" },
   transcriptSummary: { cursor: "pointer", fontWeight: 600, color: "#a5b4cf" },
   transcriptText: { marginTop: 8, lineHeight: 1.6, color: "#9fb0d0" },
   errorText: { color: "#fca5a5", fontSize: 13, margin: 0 },

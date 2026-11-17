@@ -1,26 +1,13 @@
 #!/usr/bin/env bash
-# Usage: ./run.sh [all|api|web|overlay|lan]
+# Usage: ./run.sh [all|api|web|overlay]
 #   all (default): backend (port ${PORT:-8000}) + React dev server (http://localhost:5173) + the transparent,
 #                  always-on-top overlay window showing the dev server. Closing the overlay or Ctrl+C stops everything.
 #   api: backend only (used by the desktop app).  web: dev server only.  overlay: overlay window only.
-#   lan: loopback-only backend + HTTPS dev server, without the desktop overlay.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 API_PORT="${PORT:-8000}"
 WEB_URL="http://localhost:5173/"
 mode="${1:-all}"
-curl_tls=()
-if [ "$mode" = "lan" ]; then
-  for file in ca.crt server.pem server-key.pem; do
-    if [ ! -f "$ROOT/.certs/$file" ]; then
-      echo "Missing HTTPS certificates. Run: bash infra/setup-https.sh <LAN-IP>" >&2
-      exit 1
-    fi
-  done
-  export TECHPREP_HTTPS=1
-  WEB_URL="https://localhost:5173/"
-  curl_tls=(--cacert "$ROOT/.certs/ca.crt")
-fi
 
 load_node() {
   # Non-interactive shells don't load nvm; without it the (broken) system npm is used.
@@ -44,7 +31,6 @@ run_api() {
     set -a; . "$ROOT/.env"; set +a
   fi
   local host=0.0.0.0
-  [ "$mode" != "lan" ] || host=127.0.0.1
   exec .venv/bin/python -m uvicorn app.main:app --host "$host" --port "$API_PORT"
 }
 
@@ -65,7 +51,7 @@ run_overlay() {
 wait_for() {
   local url="$1" name="$2"
   for _ in $(seq 1 120); do
-    curl "${curl_tls[@]}" -sf --max-time 2 -o /dev/null "$url" && return 0
+    curl -sf --max-time 2 -o /dev/null "$url" && return 0
     sleep 0.5
   done
   echo "$name did not start ($url)" >&2
@@ -76,8 +62,8 @@ case "$mode" in
   api) run_api ;;
   web) run_web ;;
   overlay) run_overlay ;;
-  all|lan) ;;
-  *) echo "Usage: $0 [all|api|web|overlay|lan]" >&2; exit 1 ;;
+  all) ;;
+  *) echo "Usage: $0 [all|api|web|overlay]" >&2; exit 1 ;;
 esac
 
 pids=()
@@ -98,7 +84,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 for url in "http://127.0.0.1:$API_PORT/" "$WEB_URL"; do
-  if curl "${curl_tls[@]}" -s --max-time 2 -o /dev/null "$url"; then
+  if curl -s --max-time 2 -o /dev/null "$url"; then
     echo "$url is already in use (TechPrep already running?). Stop it first, or use './run.sh overlay'." >&2
     exit 1
   fi
@@ -111,13 +97,9 @@ pids+=($!)
 
 wait_for "http://127.0.0.1:$API_PORT/health" "API"
 wait_for "$WEB_URL" "Vite dev server"
-if [ "$mode" = "lan" ]; then
-  echo "Web: $WEB_URL or https://<LAN-IP>:5173/ | API proxied securely through the web server"
-else
-  echo "API: http://localhost:$API_PORT  |  Web: $WEB_URL  |  opening overlay window…"
-  (run_overlay) &
-  pids+=($!)
-fi
+echo "API: http://localhost:$API_PORT  |  Web: $WEB_URL  |  opening overlay window…"
+(run_overlay) &
+pids+=($!)
 
 # Exit (and stop the rest) as soon as any process dies, e.g. when the overlay window is closed.
 wait -n

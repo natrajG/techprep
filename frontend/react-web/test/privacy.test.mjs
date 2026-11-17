@@ -23,7 +23,8 @@ test("privacy policy is a public static page linked from sign-in", () => {
     format: "cjs",
     platform: "node",
     jsx: "automatic",
-    external: ["react"],
+    external: ["react", "react-dom"],
+    loader: { ".svg": "dataurl" },
   }).outputFiles[0].text;
   const context = { module: { exports: {} }, require };
   vm.runInNewContext(compiled, context);

@@ -13,6 +13,7 @@ Design notes (see ~/.copilot session plan for the full phased design):
 """
 
 import json
+import hashlib
 import re
 import sqlite3
 import time
@@ -95,6 +96,10 @@ def _schema(conn: sqlite3.Connection) -> None:
         )"""
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_resume_analyses_user ON resume_analyses (username, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_resume_analyses_fingerprint ON resume_analyses (username, analyzer_version)")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(resume_analyses)").fetchall()}
+    if "analysis_fingerprint" not in cols:
+        conn.execute("ALTER TABLE resume_analyses ADD COLUMN analysis_fingerprint TEXT")
 
 
 users.register_schema(_schema)
@@ -107,6 +112,15 @@ class AnalyzeRequest(BaseModel):
 
 def _tokenize(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-zA-Z][a-zA-Z0-9+#./-]{1,}", text.lower()) if w not in _STOPWORDS and len(w) > 1}
+
+
+def _analysis_fingerprint(resume: str, jd: str) -> str:
+    material = json.dumps(
+        {"analyzer": ANALYZER_VERSION, "resume": resume.strip(), "jd": jd.strip()},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _has_section(text_lower: str, names: tuple[str, ...]) -> bool:
@@ -242,7 +256,8 @@ def facts_needed(resume: str, jd: str, breakdown: dict[str, dict[str, int]]) -> 
             "category": "achievements",
             "label": "Real numbers for your achievements",
             "prompt": "List 2-4 real metrics for your biggest wins, one per line (e.g. 'Reduced "
-                      "page load time by 30%', 'Grew signups by 500 users/month', 'Led a team of 6').",
+                      "page load time by 30%', 'Grew signups by 500 users/month', 'Led a team of 6', "
+                      "'Employee of the Year 2024').",
         })
 
     if breakdown["contact"]["score"] < breakdown["contact"]["max"]:
@@ -316,15 +331,37 @@ def analyze(resume: str, jd: str) -> dict[str, Any]:
 
 @router.post("/analyze")
 async def analyze_resume(req: AnalyzeRequest, user: str = Depends(require_auth)) -> dict:
-    rate_limit.consume("resume_analyze", user.lower(), DAILY_ANALYZE_LIMIT, 24 * 3600)
     resume = req.resume.strip()
     if not resume:
         raise HTTPException(400, "Paste or upload your resume text first.")
-    result = analyze(resume, req.jd.strip())
+    jd = req.jd.strip()
+    fingerprint = _analysis_fingerprint(resume, jd)
+    with users.connect() as conn:
+        row = conn.execute(
+            "SELECT id, overall_score, breakdown, issues, created_at "
+            "FROM resume_analyses WHERE username = ? AND analyzer_version = ? AND analysis_fingerprint = ? "
+            "ORDER BY created_at DESC, id DESC LIMIT 1",
+            (user, ANALYZER_VERSION, fingerprint),
+        ).fetchone()
+    if row:
+        breakdown = json.loads(row[2])
+        return {
+            "id": row[0],
+            "analyzer_version": ANALYZER_VERSION,
+            "overall_score": row[1],
+            "overall_max": sum(CATEGORY_MAX.values()),
+            "breakdown": breakdown,
+            "issues": json.loads(row[3]),
+            "facts_needed": [] if row[1] >= TARGET_SCORE else facts_needed(resume, jd, breakdown),
+            "cached": True,
+            "created_at": row[4],
+        }
+    rate_limit.consume("resume_analyze", user.lower(), DAILY_ANALYZE_LIMIT, 24 * 3600)
+    result = analyze(resume, jd)
     with users.connect() as conn:
         cur = conn.execute(
-            "INSERT INTO resume_analyses (username, analyzer_version, overall_score, breakdown, issues, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO resume_analyses (username, analyzer_version, overall_score, breakdown, issues, created_at, analysis_fingerprint) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 user,
                 result["analyzer_version"],
@@ -332,9 +369,11 @@ async def analyze_resume(req: AnalyzeRequest, user: str = Depends(require_auth))
                 json.dumps(result["breakdown"]),
                 json.dumps(result["issues"]),
                 int(time.time()),
+                fingerprint,
             ),
         )
         result["id"] = cur.lastrowid
+        result["cached"] = False
     return result
 
 

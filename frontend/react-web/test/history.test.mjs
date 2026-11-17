@@ -19,11 +19,12 @@ test("fetchInterviewHistory formats query params and sends auth headers", async 
     getItem: (k) => (k === "authToken" ? "valid-token" : null),
   };
 
-  const res = await fetchInterviewHistory("http://localhost:8000", "React", 50, 0, mockFetch, mockStorage);
+  const res = await fetchInterviewHistory("http://localhost:8000", "React", 20, 20, mockFetch, mockStorage);
   assert.equal(res.total, 1);
   assert.equal(res.items[0].question, "Q?");
   assert.ok(requestedUrl.includes("search=React"));
-  assert.ok(requestedUrl.includes("limit=50"));
+  assert.ok(requestedUrl.includes("limit=20"));
+  assert.ok(requestedUrl.includes("offset=20"));
   assert.equal(headersSent.Authorization, "Bearer valid-token");
 });
 

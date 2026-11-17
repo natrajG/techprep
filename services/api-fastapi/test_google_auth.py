@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import httpx
 
-from app import google_auth, rate_limit, users
+from app import google_auth, rate_limit, subscriptions, users
 from app.main import app
 
 
@@ -51,6 +51,16 @@ class GoogleSignInTests(unittest.IsolatedAsyncioTestCase):
         first = await self.google_login("sameuser@example.com")
         second = await self.google_login("sameuser@example.com")
         self.assertEqual(first.json()["user"], second.json()["user"])
+
+    async def test_google_sign_in_cannot_claim_admin_or_legacy_test_username(self):
+        with patch.dict(os.environ, {"APP_USERNAME": "operator"}):
+            admin = await self.google_login("operator@another-domain.example")
+            self.assertEqual(admin.status_code, 200)
+            self.assertNotEqual(admin.json()["user"].lower(), "operator")
+            self.assertFalse(subscriptions.is_admin(admin.json()["user"]))
+            reserved = await self.google_login("testuser_win@another-domain.example")
+            self.assertEqual(reserved.status_code, 200)
+            self.assertNotEqual(reserved.json()["user"].lower(), "testuser_win")
 
     async def test_unverifiable_credential_is_rejected(self):
         with patch.object(google_auth, "verify", return_value=None):

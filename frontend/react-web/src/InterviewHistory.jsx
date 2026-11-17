@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { fetchInterviewHistory, deleteInterviewHistoryItem, clearInterviewHistory } from "./history.mjs";
 import { splitBold } from "./rich-text.mjs";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
+const PAGE_SIZE = 20;
 
 export default function InterviewHistory({ onClose = null, inModal = false }) {
   const [items, setItems] = useState([]);
@@ -11,50 +14,64 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [refresh, setRefresh] = useState(0);
   const [expandedId, setExpandedId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
-
-  function loadData(query = search) {
-    setLoading(true);
-    setError("");
-    fetchInterviewHistory(API, query, 100, 0, fetch, localStorage, notifyExpired)
-      .then((data) => {
-        setItems(data.items || []);
-        setTotal(data.total || 0);
-      })
-      .catch((e) => setError(e.message || "Failed to load interview history"))
-      .finally(() => setLoading(false));
-  }
+  const [pendingAction, setPendingAction] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    let active = true;
+    setLoading(true);
+    setError("");
+    fetchInterviewHistory(API, query, PAGE_SIZE, page * PAGE_SIZE, fetch, localStorage, notifyExpired)
+      .then((data) => {
+        if (!active) return;
+        if (page > 0 && data.total > 0 && data.items.length === 0) {
+          setPage(Math.ceil(data.total / PAGE_SIZE) - 1);
+          return;
+        }
+        setItems(data.items);
+        setTotal(data.total);
+        setExpandedId(null);
+      })
+      .catch((e) => {
+        if (active) setError(e.message || "Failed to load interview history");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [query, page, refresh]);
 
   function handleSearchSubmit(e) {
     e.preventDefault();
-    loadData(search);
+    setPage(0);
+    setQuery(search.trim());
+    setRefresh((value) => value + 1);
   }
 
-  async function handleDelete(id, e) {
-    e.stopPropagation();
-    if (!window.confirm("Delete this question from your interview history?")) return;
+  async function confirmAction() {
+    if (!pendingAction || deleting) return;
+    setDeleting(true);
+    setError("");
     try {
-      await deleteInterviewHistoryItem(API, id, fetch, localStorage, notifyExpired);
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setTotal((t) => Math.max(0, t - 1));
+      if (pendingAction.type === "clear") {
+        await clearInterviewHistory(API, fetch, localStorage, notifyExpired);
+        setPage(0);
+      } else {
+        await deleteInterviewHistoryItem(API, pendingAction.id, fetch, localStorage, notifyExpired);
+        if (items.length === 1 && page > 0) setPage(page - 1);
+      }
+      setPendingAction(null);
+      setRefresh((value) => value + 1);
     } catch (err) {
-      alert(`Could not delete item: ${err.message}`);
-    }
-  }
-
-  async function handleClearAll() {
-    if (!window.confirm("Clear all recorded interview questions and answers? This cannot be undone.")) return;
-    try {
-      await clearInterviewHistory(API, fetch, localStorage, notifyExpired);
-      setItems([]);
-      setTotal(0);
-    } catch (err) {
-      alert(`Could not clear history: ${err.message}`);
+      setError(`Could not ${pendingAction.type === "clear" ? "clear history" : "delete question"}: ${err.message}`);
+      setPendingAction(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -68,22 +85,23 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
 
   return (
     <div style={inModal ? styles.modalContent : styles.container}>
-      <div style={styles.header}>
+      <div className="tp-history-header" style={styles.header}>
         <div>
-          <h2 style={styles.title}>📚 Interview History &amp; Question Prep</h2>
+          <span className="tp-eyebrow">YOUR QUESTION LIBRARY</span>
+          <h2 style={{ ...styles.title, marginTop: 8 }}>Interview History &amp; Question Prep</h2>
           <p style={styles.subtitle}>
-            All questions and AI-generated answers from your live sessions are automatically preserved here so you can analyze your performance and prepare for your next interview.
+            Revisit your questions. Refine your answers. Feel more ready for the next conversation.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {items.length > 0 && (
-            <button style={styles.clearBtn} onClick={handleClearAll} title="Clear all saved questions">
-              🗑️ Clear All
+          {!loading && total > 0 && (
+            <button style={styles.clearBtn} onClick={() => setPendingAction({ type: "clear" })} title="Clear all saved questions">
+              Clear all
             </button>
           )}
           {onClose && (
-            <button style={styles.closeBtn} onClick={onClose} aria-label="Close">
-              ✕ Close
+            <button className="tp-btn" onClick={onClose} aria-label="Close interview history">
+              <Icon name="close" size={18} />
             </button>
           )}
         </div>
@@ -91,11 +109,12 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
 
       {/* Search & Stats Bar */}
       <div style={styles.toolbar}>
-        <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: 1 }}>
+        <form onSubmit={handleSearchSubmit} className="tp-history-toolbar" style={{ flex: 1 }}>
           <input
             type="text"
             style={styles.searchInput}
             placeholder="Search questions or answers (e.g. React, System Design, SQL)..."
+            aria-label="Search interview history"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -108,7 +127,9 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
               style={styles.resetBtn}
               onClick={() => {
                 setSearch("");
-                loadData("");
+                setQuery("");
+                setPage(0);
+                setRefresh((value) => value + 1);
               }}
             >
               Reset
@@ -120,24 +141,28 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
         </div>
       </div>
 
-      {error && <div style={styles.errorBox}>⚠️ {error}</div>}
+      {error && <div role="alert" style={styles.errorBox}>⚠️ {error}</div>}
 
       {/* Loading state */}
       {loading && <div style={styles.mutedText}>Loading interview history…</div>}
 
       {/* Empty state */}
-      {!loading && items.length === 0 && (
+      {!loading && !error && items.length === 0 && (
         <div style={styles.emptyCard}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🎯</div>
-          <h3 style={{ margin: "0 0 6px", color: "#f8fafc" }}>No Interview Questions Saved Yet</h3>
+          <div style={{ color: "#bba8eb", marginBottom: 16 }}><Icon name="history" size={32} /></div>
+          <h3 style={{ margin: "0 0 6px", color: "#f8fafc" }}>
+            {query ? "No matching questions" : "No Interview Questions Saved Yet"}
+          </h3>
           <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, maxWidth: 500 }}>
-            Start an interview call in the TechPrep desktop app or use the question box. Every question asked by your interviewer and answered by the AI copilot will be automatically stored here for review and next-interview preparation.
+            {query
+              ? "Try a different search term or reset the search to see all saved questions."
+              : "Start an interview call in the TechPrep desktop app or use the question box. Every question asked by your interviewer and answered by the AI copilot will be automatically stored here for review and next-interview preparation."}
           </p>
         </div>
       )}
 
       {/* Q&A List */}
-      {!loading && items.length > 0 && (
+      {!loading && !error && items.length > 0 && (
         <div style={styles.list}>
           {items.map((item, idx) => {
             const isExpanded = expandedId === item.id;
@@ -148,10 +173,10 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
                 })
               : "";
             return (
-              <div key={item.id} style={styles.card} onClick={() => setExpandedId(isExpanded ? null : item.id)}>
-                <div style={styles.cardHeader}>
+              <div key={item.id} style={styles.card}>
+                <div className="tp-history-item-header" style={styles.cardHeader}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-                    <span style={styles.qBadge}>Q{items.length - idx}</span>
+                    <span style={styles.qBadge}>Q{total - page * PAGE_SIZE - idx}</span>
                     <strong style={styles.qText}>{item.question}</strong>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -165,7 +190,11 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
                     </button>
                     <button
                       style={styles.deleteBtn}
-                      onClick={(e) => handleDelete(item.id, e)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingAction({ type: "delete", id: item.id, question: item.question });
+                      }}
+                      aria-label={`Delete ${item.question}`}
                       title="Delete this question"
                     >
                       ✕
@@ -176,10 +205,12 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
                 {/* Answer Preview or Full Answer */}
                 <div style={styles.answerBox}>
                   <div style={styles.answerHeader}>
-                    <span style={styles.answerLabel}>⭐ Copilot Answer</span>
-                    <span style={{ fontSize: 11, color: "#818cf8" }}>{isExpanded ? "▲ Collapse" : "▼ Expand full"}</span>
+                    <span style={styles.answerLabel}>Copilot answer</span>
+                    <button className="tp-btn tp-btn-text" style={{ fontSize: 12, padding: "4px 8px" }}
+                      aria-expanded={isExpanded} aria-controls={`history-answer-${item.id}`}
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}>{isExpanded ? "Collapse" : "Expand answer"}</button>
                   </div>
-                  <pre style={isExpanded ? styles.preFull : styles.preCollapsed}>
+                  <pre id={`history-answer-${item.id}`} style={isExpanded ? styles.preFull : styles.preCollapsed}>
                     {splitBold(item.answer).map((part, i) =>
                       part.bold ? <strong key={i}>{part.text}</strong> : part.text
                     )}
@@ -189,6 +220,36 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
             );
           })}
         </div>
+      )}
+      {!loading && !error && total > PAGE_SIZE && (
+        <nav style={styles.pagination} aria-label="Interview history pages">
+          <button style={styles.resetBtn} disabled={page === 0} onClick={() => setPage((value) => value - 1)}>
+            ← Previous
+          </button>
+          <span>Page {page + 1} of {Math.ceil(total / PAGE_SIZE)} · {total} questions</span>
+          <button style={styles.resetBtn} disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage((value) => value + 1)}>
+            Next →
+          </button>
+        </nav>
+      )}
+      {pendingAction && (
+        <Dialog label={pendingAction.type === "clear" ? "Clear interview history?" : "Delete this question?"}
+          onClose={() => { if (!deleting) setPendingAction(null); }} style={{ maxWidth: 480 }}>
+            <h3 id="history-confirm-title" style={styles.confirmTitle}>
+              {pendingAction.type === "clear" ? "Clear interview history?" : "Delete this question?"}
+            </h3>
+            <p id="history-confirm-description" style={styles.subtitle}>
+              {pendingAction.type === "clear"
+                ? "This will permanently remove all saved questions and answers, including those outside the current search. This cannot be undone."
+                : <>“{pendingAction.question}” and its answer will be permanently removed. This cannot be undone.</>}
+            </p>
+            <div style={styles.confirmActions}>
+              <button style={styles.closeBtn} disabled={deleting} onClick={() => setPendingAction(null)} autoFocus>Cancel</button>
+              <button style={styles.clearBtn} disabled={deleting} onClick={confirmAction}>
+                {deleting ? "Deleting…" : pendingAction.type === "clear" ? "Clear all history" : "Delete question"}
+              </button>
+            </div>
+        </Dialog>
       )}
     </div>
   );
@@ -227,7 +288,7 @@ const styles = {
   subtitle: {
     margin: "6px 0 0",
     fontSize: 13,
-    color: "#94a3b8",
+    color: "#aaa4bc",
     maxWidth: 680,
     lineHeight: 1.5,
   },
@@ -246,7 +307,7 @@ const styles = {
     borderRadius: 8,
     border: "1px solid rgba(255, 255, 255, 0.15)",
     background: "rgba(255, 255, 255, 0.08)",
-    color: "#cbd5e1",
+    color: "#d3cedf",
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -264,7 +325,7 @@ const styles = {
     padding: "9px 14px",
     borderRadius: 8,
     border: "1px solid #334155",
-    background: "#0f172a",
+    background: "#101119",
     color: "#fff",
     fontSize: 13,
   },
@@ -272,7 +333,7 @@ const styles = {
     padding: "9px 16px",
     borderRadius: 8,
     border: 0,
-    background: "#4f46e5",
+    background: "#7058db",
     color: "#fff",
     fontSize: 13,
     fontWeight: 600,
@@ -282,11 +343,22 @@ const styles = {
     padding: "9px 14px",
     borderRadius: 8,
     border: "1px solid #475569",
-    background: "#1e293b",
-    color: "#cbd5e1",
+    background: "#24212e",
+    color: "#d3cedf",
     fontSize: 13,
     cursor: "pointer",
   },
+  pagination: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    color: "#d3cedf",
+    fontSize: 13,
+  },
+  confirmTitle: { margin: 0, color: "#f8fafc", fontSize: 18 },
+  confirmActions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 },
   statPill: {
     padding: "7px 14px",
     borderRadius: 9999,
@@ -304,7 +376,7 @@ const styles = {
     fontSize: 13,
   },
   mutedText: {
-    color: "#94a3b8",
+    color: "#aaa4bc",
     fontSize: 13,
     padding: "20px 0",
     textAlign: "center",
@@ -327,7 +399,7 @@ const styles = {
   card: {
     padding: "14px 16px",
     borderRadius: 12,
-    background: "rgba(15, 23, 42, 0.8)",
+    background: "#14141e",
     border: "1px solid rgba(255, 255, 255, 0.08)",
     cursor: "pointer",
     transition: "border-color 0.2s ease, background 0.2s ease",
@@ -355,14 +427,14 @@ const styles = {
   },
   dateBadge: {
     fontSize: 11,
-    color: "#94a3b8",
+    color: "#aaa4bc",
   },
   copyBtn: {
     padding: "4px 8px",
     borderRadius: 6,
     border: "1px solid rgba(255, 255, 255, 0.12)",
     background: "rgba(255, 255, 255, 0.06)",
-    color: "#cbd5e1",
+    color: "#d3cedf",
     fontSize: 11,
     cursor: "pointer",
   },
@@ -371,7 +443,7 @@ const styles = {
     borderRadius: 6,
     border: 0,
     background: "transparent",
-    color: "#64748b",
+    color: "#9890ab",
     fontSize: 12,
     cursor: "pointer",
   },
@@ -389,7 +461,7 @@ const styles = {
   answerLabel: {
     fontSize: 11,
     fontWeight: 600,
-    color: "#818cf8",
+    color: "#b3a3fa",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
   },
@@ -397,7 +469,7 @@ const styles = {
     margin: 0,
     fontFamily: "inherit",
     fontSize: 13.5,
-    color: "#cbd5e1",
+    color: "#d3cedf",
     lineHeight: 1.5,
     whiteSpace: "pre-wrap",
     maxHeight: 70,

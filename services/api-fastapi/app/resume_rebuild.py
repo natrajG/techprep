@@ -69,6 +69,14 @@ Rules (critical):
 - Write every bullet as a concise, impact-focused statement; keep bullets that already contain
   metrics intact in meaning.
 - Keep all dates/date ranges exactly as given in the source resume.
+- Make the writing sound human and specific, not AI-generic:
+  - Prefer plain, direct wording over buzzwords and hype.
+  - Avoid filler/cliche openers like "results-driven", "detail-oriented", "passionate",
+    "dynamic professional", "team player", "hardworking", "seasoned", "utilized",
+    "leveraged", "synergy", "spearheaded" unless that exact wording exists in the source.
+  - Vary bullet sentence starts naturally; do not repeat the same verb pattern across bullets.
+  - Keep tone professional but natural, as if written by an experienced recruiter/editor.
+  - Do not output meta-language such as "optimized for ATS", "AI-generated", or "as an AI".
 
 Respond ONLY with a JSON object of this exact shape (omit a key's content only if truly absent
 from the source resume, but keep the key with an empty value):
@@ -324,5 +332,4 @@ async def get_rebuild(version_id: int, user: str = Depends(require_auth)) -> dic
         version["preview"] = _teaser(version["preview"])
     version["locked"] = locked
     return version
-
 

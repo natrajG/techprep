@@ -3,7 +3,7 @@ import { extractPdfText } from "./resume-pdf.mjs";
 
 // A small "Upload PDF (optional)" control that extracts resume text client-side and hands it to
 // the caller — the file itself is never sent to the server or stored anywhere.
-export default function ResumeUploadButton({ onExtracted, style, buttonStyle }) {
+export default function ResumeUploadButton({ onExtracted, style, buttonStyle, label = "📄 Upload Resume PDF (Required for ATS)", children }) {
   const inputRef = useRef(null);
   const [status, setStatus] = useState(""); // "" | "extracting" | "error"
   const [error, setError] = useState("");
@@ -16,6 +16,7 @@ export default function ResumeUploadButton({ onExtracted, style, buttonStyle }) 
     setError("");
     try {
       const text = await extractPdfText(file);
+      localStorage.setItem("resume_uploaded_at", String(Date.now()));
       onExtracted(text);
       setStatus("");
     } catch (e) {
@@ -24,18 +25,24 @@ export default function ResumeUploadButton({ onExtracted, style, buttonStyle }) 
     }
   }
 
+  const triggerUpload = () => inputRef.current?.click();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
       <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={handleFile} />
-      <button
-        type="button"
-        style={{ ...defaultButtonStyle, ...buttonStyle }}
-        onClick={() => inputRef.current?.click()}
-        disabled={status === "extracting"}
-      >
-        {status === "extracting" ? "Extracting…" : "📄 Upload resume PDF (optional)"}
-      </button>
-      {error && <span style={{ color: "#fca5a5", fontSize: 11 }}>{error}</span>}
+      {children ? (
+        children(status, error, triggerUpload)
+      ) : (
+        <button
+          type="button"
+          style={{ ...defaultButtonStyle, ...buttonStyle }}
+          onClick={triggerUpload}
+          disabled={status === "extracting"}
+        >
+          {status === "extracting" ? "Extracting text from PDF…" : label}
+        </button>
+      )}
+      {error && <span role="alert" style={{ color: "#fca5a5", fontSize: 12 }}>{error}</span>}
     </div>
   );
 }

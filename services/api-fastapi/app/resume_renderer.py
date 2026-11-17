@@ -120,6 +120,55 @@ def render_docx(data: dict) -> bytes:
     return buffer.getvalue()
 
 
+def _rtf_escape(value: str) -> str:
+    return (value or "").replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\line ")
+
+
+def render_rtf(data: dict) -> bytes:
+    lines: list[str] = [
+        r"{\rtf1\ansi\deff0",
+        r"{\fonttbl{\f0 Arial;}}",
+        r"\fs22",
+    ]
+    lines.append(rf"\b\fs32 {_rtf_escape(data.get('name', ''))}\b0\fs22\par")
+    if data.get("contact"):
+        lines.append(rf"{_rtf_escape(data['contact'])}\par")
+    if data.get("summary"):
+        lines.append(r"\b Professional Summary\b0\par")
+        lines.append(rf"{_rtf_escape(data['summary'])}\par")
+    if data.get("experience"):
+        lines.append(r"\b Experience\b0\par")
+        for job in data["experience"]:
+            heading = f"{job.get('title', '')} — {job.get('company', '')} ({job.get('dates', '')})"
+            lines.append(rf"\b {_rtf_escape(heading)}\b0\par")
+            for bullet in job.get("bullets") or []:
+                lines.append(rf"\tab \bullet {_rtf_escape(bullet)}\par")
+    if data.get("education"):
+        lines.append(r"\b Education\b0\par")
+        for edu in data["education"]:
+            row = f"{edu.get('degree', '')}, {edu.get('institution', '')} ({edu.get('dates', '')})"
+            lines.append(rf"{_rtf_escape(row)}\par")
+    if data.get("certifications"):
+        lines.append(r"\b Certifications\b0\par")
+        for cert in data["certifications"]:
+            lines.append(rf"\tab \bullet {_rtf_escape(cert)}\par")
+    if data.get("skills"):
+        lines.append(r"\b Skills\b0\par")
+        lines.append(rf"{_rtf_escape(', '.join(data['skills']))}\par")
+    lines.append("}")
+    return "\n".join(lines).encode("utf-8")
+
+
+def render_doc(data: dict) -> bytes:
+    """Generates a Word-compatible HTML payload served with .doc extension."""
+    html_doc = (
+        "<html><head><meta charset='utf-8'></head><body>"
+        + render_html(data).split("<body>", 1)[1].rsplit("</body>", 1)[0]
+        + "</body></html>"
+    )
+    return html_doc.encode("utf-8")
+
+
 def reparse_pdf_text(pdf_bytes: bytes) -> str:
     """Export-then-reparse validation: confirms the generated PDF is actually text-extractable
     (not a pure-image render an ATS parser couldn't read), the same way the free analyzer

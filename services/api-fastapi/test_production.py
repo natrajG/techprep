@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from fastapi import HTTPException
 
-from app import auth, downloads, rate_limit, settings, users
+from app import auth, downloads, rate_limit, settings, subscriptions, users
 from app.main import app
 
 PRODUCTION = {
@@ -18,6 +18,7 @@ PRODUCTION = {
     "AUTH_SECRET": "test-only-long-secret-not-for-deployment",
     "APP_USERNAME": "operator",
     "APP_PASSWORD": "test-only-password",
+    "ENFORCE_SUBSCRIPTIONS": "true",
     "OPENAI_API_KEY": "test-only",
     "USERS_DB": "/data/users.db",
     "DESKTOP_RELEASE_DIR": "/releases",
@@ -64,6 +65,7 @@ class SettingsTests(unittest.TestCase):
             ("AUTH_RATE_LIMIT_ATTEMPTS", "0"),
             ("AI_REQUESTS_PER_MINUTE", "-1"),
             ("AUTH_TOKEN_TTL_HOURS", "0"),
+            ("ENFORCE_SUBSCRIPTIONS", "false"),
             ("ALLOW_SIGNUP", "maybe"),
             ("STORE_APP_PUBLISHED", "maybe"),
             ("USERS_DB", "relative.db"),
@@ -71,6 +73,18 @@ class SettingsTests(unittest.TestCase):
             with self.subTest(key=key), patch.dict(os.environ, {**PRODUCTION, key: value}, clear=True):
                 with self.assertRaises(ValueError):
                     settings.validate()
+
+    def test_production_gate_cannot_be_disabled_at_runtime(self):
+        with patch.dict(os.environ, {**PRODUCTION, "ENFORCE_SUBSCRIPTIONS": "false"}, clear=True):
+            self.assertTrue(subscriptions.subscription_enforced())
+
+    def test_reserved_usernames_cannot_be_registered(self):
+        with patch.dict(os.environ, PRODUCTION, clear=True):
+            with tempfile.TemporaryDirectory() as directory:
+                with patch.object(users, "DB_PATH", Path(directory) / "users.db"):
+                    self.assertFalse(users.create_user("operator", "a-valid-password", "operator@example.com"))
+                    self.assertFalse(users.create_user("testuser_win", "a-valid-password", "test@example.com"))
+
 
 
 class RateLimitTests(unittest.TestCase):
@@ -118,6 +132,14 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.db = patch.object(users, "DB_PATH", Path(self.directory.name) / "users.db")
         self.db.start()
         self.addCleanup(self.db.stop)
+        with users.connect() as conn:
+            for username in ("download-user", "quota-user", "context-user", "other-context-user", "error-user"):
+                conn.execute(
+                    """INSERT INTO subscriptions
+                       (username, plan_id, plan_name, amount, status, created_at, valid_until)
+                       VALUES (?, 'monthly', 'Test fixture', 1999, 'active', 1, ?)""",
+                    (username, 2**31),
+                )
         rate_limit.reset_memory()
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app, client=("203.0.113.1", 5000)),
@@ -138,6 +160,14 @@ class ProductionEndpointTests(unittest.IsolatedAsyncioTestCase):
             "username": "newuser", "password": "a-valid-password", "email": "new@example.com",
         })
         self.assertEqual(signup.status_code, 403)
+
+    async def test_unpaid_ai_is_denied_even_if_enforcement_setting_is_missing(self):
+        headers = {"Authorization": "Bearer " + auth.issue_token("unpaid-candidate")}
+        with patch.dict(os.environ, {"ENFORCE_SUBSCRIPTIONS": "false"}):
+            response = await self.client.post(
+                "/api/v1/answer", json={"question": "hello"}, headers=headers,
+            )
+        self.assertEqual(response.status_code, 402)
 
     async def test_store_link_appears_only_after_publication(self):
         self.assertIsNone((await self.client.get("/api/v1/config")).json()["store_url"])

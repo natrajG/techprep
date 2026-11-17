@@ -11,7 +11,6 @@ from .auth import require_auth
 
 ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "desktop" / "release" / "TechPrep-Setup.exe"
-CA_CERTIFICATE = ROOT / ".certs" / "ca.crt"
 INSTALLER_NAME = "TechPrep-Setup.exe"
 MANIFEST_NAME = "desktop-release.json"
 MAC_INSTALLER = ROOT / "desktop" / "release" / "TechPrep.dmg"
@@ -139,17 +138,4 @@ def mac_installer() -> FileResponse:
         filename=MAC_INSTALLER_NAME,
         media_type="application/x-apple-diskimage",
         headers={**HEADERS, "X-Techprep-Mac-Signed": "true" if signed else "false"},
-    )
-
-
-@router.get("/ca")
-def ca_certificate() -> FileResponse:
-    # Production uses a publicly trusted certificate; never ask users to trust a private CA.
-    if settings.production() or not CA_CERTIFICATE.is_file():
-        raise HTTPException(404, "This server has no local CA certificate to download.")
-    return FileResponse(
-        CA_CERTIFICATE,
-        filename="TechPrep-Local-CA.crt",
-        media_type="application/x-x509-ca-cert",
-        headers=HEADERS,
     )

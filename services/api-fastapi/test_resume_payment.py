@@ -1,6 +1,8 @@
 import hashlib
 import hmac
 import json
+import os
+import secrets
 import tempfile
 import unittest
 from pathlib import Path
@@ -62,6 +64,40 @@ class ResumePaymentTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.client_patch.stop)
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         self.addCleanup(self.client.aclose)
+        self.payments = {}
+        self.gateway_env = patch.dict(os.environ, {
+            "RAZORPAY_KEY_ID": "rzp_test_suite", "RAZORPAY_KEY_SECRET": "suite-secret",
+        })
+        self.gateway_env.start()
+        self.addCleanup(self.gateway_env.stop)
+        self.gateway = patch.object(resume_payment, "razorpay_request", side_effect=self.provider_request)
+        self.gateway.start()
+        self.addCleanup(self.gateway.stop)
+
+    def provider_request(self, method, path, **kwargs):
+        if method == "POST":
+            return {"id": "order_" + secrets.token_hex(8),
+                    "amount": kwargs["json"]["amount"], "currency": "INR"}
+        return self.payments[path.rsplit("/", 1)[-1]]
+
+    def payment_payload(self, order):
+        payment_id = "pay_" + secrets.token_hex(8)
+        self.payments[payment_id] = {
+            "id": payment_id, "order_id": order["razorpay_order_id"],
+            "status": "captured", "currency": "INR", "amount": order["amount"] * 100,
+        }
+        signature = hmac.new(
+            os.environ["RAZORPAY_KEY_SECRET"].encode(),
+            f"{order['razorpay_order_id']}|{payment_id}".encode(), hashlib.sha256,
+        ).hexdigest()
+        return {"order_id": order["order_id"], "razorpay_payment_id": payment_id,
+                "razorpay_signature": signature}
+
+    async def verify_order(self, order, headers):
+        return await self.client.post(
+            "/api/v1/resume-builder/payment/verify",
+            json=self.payment_payload(order), headers=headers,
+        )
 
     async def _make_version(self, username: str) -> int:
         fake = _fake_client(REBUILT_PAYLOAD)
@@ -82,16 +118,36 @@ class ResumePaymentTests(unittest.IsolatedAsyncioTestCase):
         entitlement = await self.client.get("/api/v1/resume-builder/payment/entitlement", headers=headers)
         self.assertFalse(entitlement.json()["active"])
 
-    async def test_test_user_payment_unlocks_all_their_versions_for_24h(self):
-        token = auth.issue_token(resume_payment.TEST_PAYMENT_USER)
+    async def test_legacy_utr_order_cannot_unlock_downloads(self):
+        token = auth.issue_token("testuser_win")
+        headers = {"Authorization": "Bearer " + token}
+        version_id = await self._make_version("testuser_win")
+        with users.connect() as conn:
+            conn.execute(
+                """INSERT INTO resume_payment_orders
+                   (order_id, username, amount, status, created_at) VALUES (?, ?, ?, 'pending', ?)""",
+                ("legacy-order", "testuser_win", resume_payment.RESUME_REBUILD_PRICE, 1),
+            )
+        response = await self.client.post(
+            "/api/v1/resume-builder/payment/verify",
+            json={"order_id": "legacy-order", "utr_ref": "123456789012"}, headers=headers,
+        )
+        self.assertEqual(response.status_code, 422)
+        download = await self.client.get(
+            f"/api/v1/resume-builder/version/{version_id}/download?fmt=pdf", headers=headers,
+        )
+        self.assertEqual(download.status_code, 402)
+
+    async def test_captured_payment_unlocks_all_their_versions_for_24h(self):
+        token = auth.issue_token("resume_payer")
         headers = {"Authorization": f"Bearer {token}"}
-        version_one = await self._make_version(resume_payment.TEST_PAYMENT_USER)
+        version_one = await self._make_version("resume_payer")
 
         order_res = await self.client.post("/api/v1/resume-builder/payment/create-order", headers=headers)
         self.assertEqual(order_res.status_code, 200)
         order = order_res.json()
         self.assertEqual(order["amount"], resume_payment.RESUME_REBUILD_PRICE)
-        self.assertEqual(order["payment_mode"], "test_utr")
+        self.assertEqual(order["payment_mode"], "razorpay")
         self.assertEqual(order["entitlement_hours"], 24)
 
         bad_utr = await self.client.post(
@@ -101,11 +157,7 @@ class ResumePaymentTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(bad_utr.status_code, 422)
 
-        verify_res = await self.client.post(
-            "/api/v1/resume-builder/payment/verify",
-            json={"order_id": order["order_id"], "utr_ref": "123456789012"},
-            headers=headers,
-        )
+        verify_res = await self.verify_order(order, headers)
         self.assertEqual(verify_res.status_code, 200)
         self.assertEqual(verify_res.json()["status"], "success")
 
@@ -120,24 +172,32 @@ class ResumePaymentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(download_res.content.startswith(b"%PDF"))
 
         # ...and any further free regenerations made within the entitlement window, with no new payment.
-        version_two = await self._make_version(resume_payment.TEST_PAYMENT_USER)
+        version_two = await self._make_version("resume_payer")
         download_two = await self.client.get(
             f"/api/v1/resume-builder/version/{version_two}/download?fmt=docx", headers=headers,
         )
         self.assertEqual(download_two.status_code, 200)
         self.assertGreater(len(download_two.content), 0)
 
+        download_rtf = await self.client.get(
+            f"/api/v1/resume-builder/version/{version_two}/download?fmt=rtf", headers=headers,
+        )
+        self.assertEqual(download_rtf.status_code, 200)
+        self.assertIn(b"{\\rtf1", download_rtf.content[:30])
+
+        download_doc = await self.client.get(
+            f"/api/v1/resume-builder/version/{version_two}/download?fmt=doc", headers=headers,
+        )
+        self.assertEqual(download_doc.status_code, 200)
+        self.assertIn(b"<html", download_doc.content[:120].lower())
+
     async def test_entitlement_does_not_leak_across_users(self):
-        payer_token = auth.issue_token(resume_payment.TEST_PAYMENT_USER)
+        payer_token = auth.issue_token("resume_payer")
         payer_headers = {"Authorization": f"Bearer {payer_token}"}
         order = (await self.client.post(
             "/api/v1/resume-builder/payment/create-order", headers=payer_headers,
         )).json()
-        await self.client.post(
-            "/api/v1/resume-builder/payment/verify",
-            json={"order_id": order["order_id"], "utr_ref": "123456789012"},
-            headers=payer_headers,
-        )
+        await self.verify_order(order, payer_headers)
 
         other_token = auth.issue_token("non_paying_user")
         other_headers = {"Authorization": f"Bearer {other_token}"}
@@ -193,19 +253,15 @@ class ResumePaymentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(download_res.status_code, 200)
 
     async def test_entitlement_expires_after_24_hours(self):
-        token = auth.issue_token(resume_payment.TEST_PAYMENT_USER)
+        token = auth.issue_token("resume_payer")
         headers = {"Authorization": f"Bearer {token}"}
-        version_id = await self._make_version(resume_payment.TEST_PAYMENT_USER)
+        version_id = await self._make_version("resume_payer")
 
         with patch("app.resume_payment.time.time", return_value=1_000_000):
             order = (await self.client.post(
                 "/api/v1/resume-builder/payment/create-order", headers=headers,
             )).json()
-            await self.client.post(
-                "/api/v1/resume-builder/payment/verify",
-                json={"order_id": order["order_id"], "utr_ref": "123456789012"},
-                headers=headers,
-            )
+            await self.verify_order(order, headers)
 
         with patch("app.resume_payment.time.time", return_value=1_000_000 + 24 * 3600 + 1):
             expired = await self.client.get(

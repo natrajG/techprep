@@ -1,446 +1,207 @@
 import { useEffect, useState } from "react";
 import InteractiveDemo from "./InteractiveDemo";
-import SubscriptionPricing from "./SubscriptionPricing";
+import Icon from "./Icon";
+import BrandMark from "./BrandMark";
 import { fetchPlans } from "./subscriptions.mjs";
 import { fetchRatingSummary } from "./ratings.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
+const tools = [
+  { id: "resume", icon: "file", title: "ATS Resume Builder", text: "Turn your experience into a role-ready resume. Check your ATS match, find missing keywords, and rebuild with AI.", tag: "Free ATS score · Full resume unlock ₹10", action: "Build my resume" },
+  { id: "practice", icon: "mic", title: "Mock Interviews", text: "Find the words before the real conversation. Practice role-specific questions and get feedback on your delivery.", tag: "Read-aloud coaching · Personalized questions", action: "Start practicing" },
+  { id: "jobs", icon: "search", title: "Resume-Based Job Search", text: "Let your experience guide the search. Discover relevant roles, shortlist your favorites, and open their application pages.", tag: "Jooble", action: "Find my next role" },
+];
+const previewModes = [
+  { id: "answers", label: "Live answers", icon: "spark" },
+  { id: "context", label: "Resume context", icon: "file" },
+  { id: "protection", label: "Capture protection", icon: "shield" },
+];
+const faqs = [
+  ["What can I do in the browser?", "Build and score your resume, explore relevant jobs, practice mock interviews, and manage your account. Live audio transcription and the always-on-top HUD run in the desktop app."],
+  ["Is the resume builder free?", "ATS scoring and the rebuild preview are free. The full AI-rebuilt resume and PDF/DOCX downloads cost ₹10, with 24-hour access. This is separate from interview subscriptions."],
+  ["Is the HUD invisible in every screen share?", "No universal guarantee is possible. TechPrep uses native capture protection where supported. Visibility depends on your operating system, meeting app, and sharing method. Test your setup first, obtain consent for audio capture, and follow your interviewer’s rules."],
+  ["Does job search automatically apply for me?", "No. You can select matching jobs and open their application pages together. You review and submit each application on the employer’s or provider’s website. Your browser may ask you to allow multiple tabs."],
+];
+const steps = [
+  ["Bring your experience", "Upload your resume and add a job description for more relevant guidance."],
+  ["Find your direction", "Check your ATS match and explore roles based on your skills."],
+  ["Prepare your answers", "Practice with mock interviews and revisit your question history."],
+  ["Show up ready", "Use the desktop companion for supported, consent-based interview assistance."],
+];
 
 export default function Landing({ onSignIn, onSignUp, storeUrl }) {
-  const [showDemo, setShowDemo] = useState(false);
-  const [showPricing, setShowPricing] = useState(false);
   const [plans, setPlans] = useState([]);
   const [planError, setPlanError] = useState("");
-  const [ratingSummary, setRatingSummary] = useState(null);
-  const hourly = plans.find((plan) => plan.id === "hourly_call");
-  const monthly = plans.find((plan) => plan.id === "monthly");
-
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [rating, setRating] = useState(null);
+  const [showDemo, setShowDemo] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState("answers");
   useEffect(() => {
-    fetchPlans(API).then((data) => setPlans(data.plans))
-      .catch((error) => setPlanError(`Cannot load prices: ${error.message}`));
-    fetchRatingSummary(API).then(setRatingSummary).catch(() => {});
+    let active = true;
+    fetchPlans(API).then((data) => { if (active) setPlans(data.plans || []); })
+      .catch((e) => { if (active) setPlanError(e.message); })
+      .finally(() => { if (active) setPlansLoading(false); });
+    fetchRatingSummary(API).then((data) => { if (active) setRating(data); })
+      .catch((e) => console.warn("Rating summary unavailable:", e.message));
+    return () => { active = false; };
   }, []);
+  const hourly = plans.find((p) => p.id === "hourly_call");
+  const monthly = plans.find((p) => p.id === "monthly");
+  const getStarted = onSignUp || onSignIn;
 
   return (
-    <main style={styles.page}>
-      <header style={styles.nav}>
-        <div style={styles.brand}>
-          <span style={styles.logoDot}></span>
-          <span style={styles.brandText}>TechPrep</span>
-          <span style={styles.badgePro}>AI PRO</span>
-        </div>
-        <div style={styles.navActions}>
-          <button style={styles.navBtn} onClick={() => setShowDemo(true)}>
-            Interactive Demo
-          </button>
-          <a href="#ats-score-builder" style={styles.navBtn}>
-            ATS Resume Builder
+    <div className="tp-landing">
+      <a className="tp-skip" href="#main-content">Skip to content</a>
+      <header className="tp-public-nav">
+        <div className="tp-wrap tp-nav-inner">
+          <a className="tp-brand" href="#" aria-label="TechPrep home">
+            <BrandMark />TechPrep
           </a>
-          <a href="#mock-interview" style={styles.navBtn}>
-            Mock Interview
-          </a>
-          <button style={styles.navBtn} onClick={() => setShowPricing(true)}>
-            Pricing
-          </button>
-          <button style={styles.navBtn} onClick={onSignIn}>
-            Sign In
-          </button>
-          <button style={styles.navPrimary} onClick={onSignUp || onSignIn}>
-            Sign Up
+          <nav className={`tp-nav-links ${menuOpen ? "open" : ""}`} id="public-navigation" aria-label="Main navigation"
+            onClick={() => setMenuOpen(false)}>
+            <a href="#interview-hud">Interview HUD</a>
+            <a href="#features">Career toolkit</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <a className="tp-mobile-signin" href="#signin" onClick={(event) => { event.preventDefault(); onSignIn(); }}>Sign in</a>
+          </nav>
+          <div className="tp-nav-account">
+            <button className="tp-btn tp-btn-text" onClick={onSignIn}>Sign in</button>
+            <button className="tp-btn tp-btn-primary" onClick={getStarted}>Get started <Icon name="arrow" size={15} /></button>
+          </div>
+          <button className="tp-btn tp-nav-toggle" onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={menuOpen ? "Close navigation" : "Open navigation"} aria-expanded={menuOpen} aria-controls="public-navigation">
+            <Icon name={menuOpen ? "close" : "menu"} />
           </button>
         </div>
       </header>
 
-      <section style={styles.hero}>
-        <div style={styles.tagline}>
-          <span>✨</span> NEXT-GEN STEALTH INTERVIEW INTELLIGENCE
-        </div>
-        <h1 style={styles.heroTitle}>
-          Crack Every Tech Interview with <span style={styles.gradientText}>Invisible AI HUD</span>
-        </h1>
-        <p style={styles.lead}>
-          Real-time audio transcription and instant, resume-tailored answers delivered through an undetectable,
-          always-on-top glass overlay. Hidden from Zoom, Teams & Google Meet screen sharing.
-        </p>
-        <p style={styles.newFeatureCallout}>
-          🆕 <strong>Free ATS Resume Builder</strong> — upload your resume &amp; a job description, get an
-          instant ATS compatibility score breakdown, and let AI rebuild an ATS-friendly version of your resume.
-        </p>
+      <main id="main-content">
+        <section className="tp-spotlight">
+          <div className="tp-aurora" aria-hidden="true" />
+          <div className="tp-wrap tp-spotlight-inner">
+            <div className="tp-hero-orbit tp-orbit-left" aria-hidden="true"><Icon name="mic" size={22} /><span>Hear it.<br /><strong>Understand it.</strong></span></div>
+            <div className="tp-hero-orbit tp-orbit-right" aria-hidden="true"><Icon name="spark" size={22} /><span>Your experience.<br /><strong>Sharper answers.</strong></span></div>
+            <span className="tp-launch-badge"><span aria-hidden="true">✨</span> NEXT-GEN STEALTH INTERVIEW INTELLIGENCE</span>
+            <h1>Crack Every Tech Interview<br /><span>with <em>Invisible AI HUD</em></span></h1>
+            <p className="tp-spotlight-description">Real-time audio transcription and instant, resume-tailored answers delivered through a discreet, always-on-top glass overlay. Built for your Zoom, Teams &amp; Google Meet conversations.</p>
+            <p className="tp-capture-note"><Icon name="shield" size={14} /> Hidden from screen sharing on supported setups. Protection varies by OS and sharing method.</p>
+            <div className="tp-hero-actions tp-spotlight-actions">
+              <button className="tp-btn tp-btn-primary" onClick={getStarted}>Get interview-ready <Icon name="arrow" size={17} /></button>
+              <button className="tp-btn" onClick={() => setShowDemo(true)}><Icon name="play" size={15} /> Explore the demo</button>
+            </div>
+            <span className="tp-hero-note"><Icon name="check" size={14} /> Free ATS scoring <span aria-hidden="true">·</span> Windows &amp; macOS <span aria-hidden="true">·</span> Your complete career toolkit</span>
 
-        <div style={styles.actions}>
-          <button style={styles.primary} onClick={onSignUp || onSignIn}>
-            Start Free 10-Min Trial →
-          </button>
-          <button style={styles.demoAction} onClick={() => setShowDemo(true)}>
-            ▶ Watch Live Simulation
-          </button>
-        </div>
-        <p style={styles.trialNote}>
-          🎁 10 minutes free on signup · No credit card required
-        </p>
-
-        <div style={styles.statsRow}>
-          <div style={styles.statItem}>
-            <strong>10 Min</strong>
-            <span>Free Trial on Signup</span>
-          </div>
-          <div style={styles.statDivider}></div>
-          <div style={styles.statItem}>
-            <strong>{hourly ? `₹${hourly.amount.toLocaleString()}` : "—"}</strong>
-            <span>Per Call / {hourly?.duration_minutes ?? "—"}-Min Window</span>
-          </div>
-          <div style={styles.statDivider}></div>
-          <div style={styles.statItem}>
-            <strong>&lt; 800ms</strong>
-            <span>Token Stream Latency</span>
-          </div>
-          <div style={styles.statDivider}></div>
-          <div style={styles.statItem}>
-            <strong>100%</strong>
-            <span>Screen-Share Invisible (Win/Mac)</span>
-          </div>
-          {ratingSummary && ratingSummary.count > 0 && (
-            <>
-              <div style={styles.statDivider}></div>
-              <div style={styles.statItem}>
-                <strong>⭐ {ratingSummary.average}/5</strong>
-                <span>Rated by {ratingSummary.count}+ users</span>
+            <div className="tp-hud-stage" id="interview-hud" role="region" aria-label="Illustrative preview of the interview workspace">
+              <div className="tp-stage-toolbar">
+                <span className="tp-stage-brand"><BrandMark className="tp-stage-mark" /> TechPrep <span>DESKTOP COMPANION</span></span>
+                <span className="tp-pill"><span className="tp-dot" /> Illustrative demo</span>
               </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      <section style={styles.grid} aria-label="Features" id="ats-score-builder">
-        <article style={styles.card}>
-          <div style={styles.cardIcon}>🎙️</div>
-          <h2 style={styles.h2}>Direct Loopback Audio</h2>
-          <p style={styles.cardText}>
-            Captures interviewer questions straight from your PC audio output with zero mic echo or background noise.
-          </p>
-        </article>
-        <article style={styles.card}>
-          <div style={styles.cardIcon}>⚡</div>
-          <h2 style={styles.h2}>Tailored Suggested Answers</h2>
-          <p style={styles.cardText}>
-            Delivers concise, high-impact bullet points and working code snippets customized to your resume and the JD.
-          </p>
-        </article>
-        <article style={styles.card}>
-          <div style={styles.cardIcon}>🛡️</div>
-          <h2 style={styles.h2}>Desktop Capture Protection</h2>
-          <p style={styles.cardText}>
-            Native OS-level content protection ensures the assistant is never recorded or shown in screen shares.
-          </p>
-        </article>
-        <article style={styles.card}>
-          <div style={styles.cardIcon}>📊</div>
-          <h2 style={styles.h2}>Free ATS Resume Builder</h2>
-          <p style={styles.cardText}>
-            Paste your resume and a job description to get a free ATS score breakdown (formatting, keywords,
-            experience, achievements, summary, education &amp; contact info) — then let AI rebuild an
-            ATS-friendly version of your resume.
-          </p>
-        </article>
-        <article style={styles.card} id="mock-interview">
-          <div style={styles.cardIcon}>🎤</div>
-          <h2 style={styles.h2}>AI Mock Interview Practice</h2>
-          <p style={styles.cardText}>
-            Practice out loud against AI-generated questions tailored to your role, record your spoken answer, and
-            get instant feedback on pace, clarity &amp; content — plus a sample answer to compare against.
-          </p>
-        </article>
-      </section>
-
-      {/* Pricing Teaser Section */}
-      <section style={styles.pricingTeaser}>
-        <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 8px", color: "#fff" }}>
-          Unmatched Value for Job Seekers
-        </h2>
-        <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 24px" }}>
-          Why pay $100+ USD to US competitors when you can prepare with local UPI convenience?
-        </p>
-        <div style={styles.pricingCards}>
-          {planError && <p role="alert" style={{ color: "#fca5a5" }}>{planError}</p>}
-          {!plans.length && !planError && <p>Loading current plans…</p>}
-          <div
-            style={{ ...styles.priceCardSmall, borderColor: "rgba(74, 222, 128, 0.4)", cursor: "pointer" }}
-            onClick={onSignUp || onSignIn}
-          >
-            <span style={{ ...styles.priceCardBadge, background: "rgba(74, 222, 128, 0.15)", color: "#4ade80" }}>
-              FREE TRIAL
-            </span>
-            <h3 style={{ margin: "6px 0", fontSize: 20 }}>10-Minute Trial</h3>
-            <p style={{ fontSize: 28, fontWeight: 800, color: "#4ade80", margin: "4px 0 12px" }}>₹0</p>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
-              Granted automatically when you sign up — no credit card required. Experience the invisible HUD live.
-            </p>
-            <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%", background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)" }}>
-              Start Free Trial →
-            </button>
+              <div className="tp-stage-body">
+                <div className="tp-meeting-preview">
+                  <div className="tp-meeting-heading"><span>Technical interview</span><span className="tp-pill">Sample session</span></div>
+                  <div className="tp-meeting-people" aria-hidden="true">
+                    <div className="tp-person tp-person-interviewer"><div className="tp-person-silhouette" /><span>Interviewer <Icon name="mic" size={12} /></span></div>
+                    <div className="tp-person tp-person-you"><div className="tp-person-silhouette" /><span>You <Icon name="mic" size={12} /></span></div>
+                  </div>
+                  <div className="tp-transcript"><div className="tp-audio-wave" aria-hidden="true">{Array.from({ length: 15 }, (_, index) => <i key={index} />)}</div><span>“How would you design a scalable API?”</span></div>
+                  <div className="tp-meeting-bottom"><span>Stay in the conversation.</span><span className="tp-meeting-controls" aria-hidden="true"><Icon name="mic" size={15} /><Icon name="desktop" size={15} /><span className="tp-end-call" /></span></div>
+                </div>
+                <div className="tp-glass-hud">
+                  <div className="tp-glass-top"><span><Icon name="spark" size={17} /> Your AI advantage</span><span className="tp-context-chip"><Icon name="file" size={12} /> Resume-aware</span></div>
+                  <div className="tp-preview-modes" role="group" aria-label="HUD preview mode">
+                    {previewModes.map((mode) => <button key={mode.id} aria-pressed={previewMode === mode.id} onClick={() => setPreviewMode(mode.id)}><Icon name={mode.icon} size={14} />{mode.label}</button>)}
+                  </div>
+                  <div className="tp-hud-content" aria-live="polite" aria-atomic="true">
+                    {previewMode === "answers" && <>
+                      <span className="tp-eyebrow">A STRUCTURED STARTING POINT</span>
+                      <h2>Turn a tough question<br />into a clear answer.</h2>
+                      <p><b>Start with the requirements.</b> Clarify traffic, latency targets, and consistency needs.</p>
+                      <p><b>Build for growth.</b> Use stateless services, a load balancer, caching, and a durable queue for background work.</p>
+                      <div className="tp-hud-insight"><Icon name="spark" size={15} /><span>Connect this to a scaling challenge from your own experience.</span></div>
+                    </>}
+                    {previewMode === "context" && <>
+                      <span className="tp-eyebrow">YOUR STORY, NOT A GENERIC SCRIPT</span>
+                      <h2>Answers grounded<br />in your experience.</h2>
+                      <p>Add your resume and the target job description in the desktop app. Get suggestions shaped around your skills, projects, and the role.</p>
+                      <div className="tp-context-skills"><span>Experience</span><span>Projects</span><span>Target role</span></div>
+                      <div className="tp-hud-insight"><Icon name="file" size={15} /><span>Review every suggestion. Keep your answers accurate and your own.</span></div>
+                    </>}
+                    {previewMode === "protection" && <>
+                      <span className="tp-eyebrow">A DISCREET DESKTOP WORKSPACE</span>
+                      <h2>In your view.<br />Out of the way.</h2>
+                      <p>A compact, always-on-top overlay with adjustable opacity and native screen-capture protection where supported.</p>
+                      <div className="tp-hud-insight"><Icon name="shield" size={15} /><span>Test your OS and sharing setup first. Capture protection is not a universal invisibility guarantee.</span></div>
+                    </>}
+                  </div>
+                  <div className="tp-glass-footer"><span><span className="tp-dot" /> Real-time assistance</span><span>Always-on-top glass HUD</span></div>
+                </div>
+              </div>
+              <div className="tp-stage-caption"><span><Icon name="mic" size={15} /> Hear the question</span><Icon name="arrow" size={14} /><span><Icon name="file" size={15} /> Add your context</span><Icon name="arrow" size={14} /><span><Icon name="spark" size={15} /> Shape your answer</span></div>
+            </div>
           </div>
-          {hourly && <div
-            style={{ ...styles.priceCardSmall, cursor: "pointer" }}
-            onClick={() => setShowPricing(true)}
-          >
-            <span style={styles.priceCardBadge}>PAY AS YOU GO</span>
-            <h3 style={{ margin: "6px 0", fontSize: 20 }}>{hourly.name}</h3>
-            <p style={{ fontSize: 28, fontWeight: 800, color: "#38bdf8", margin: "4px 0 12px" }}>₹{hourly.amount.toLocaleString()}</p>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
-              Perfect for crucial interview rounds. Reconnects within {hourly.duration_minutes} minutes stay covered.
-            </p>
-            <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%" }}>
-              Get Started (₹{hourly.amount.toLocaleString()}) →
-            </button>
-          </div>}
-          {monthly && <div
-            style={{ ...styles.priceCardSmall, borderColor: "rgba(165, 180, 252, 0.4)", cursor: "pointer" }}
-            onClick={() => setShowPricing(true)}
-          >
-            <span style={{ ...styles.priceCardBadge, background: "rgba(234, 179, 8, 0.2)", color: "#fde047" }}>
-              MOST POPULAR
-            </span>
-            <h3 style={{ margin: "6px 0", fontSize: 20 }}>{monthly.name}</h3>
-            <p style={{ fontSize: 28, fontWeight: 800, color: "#a5b4fc", margin: "4px 0 12px" }}>₹{monthly.amount.toLocaleString()}</p>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 14px" }}>
-              {monthly.call_limit} one-hour calls within {monthly.duration_days} days for interview preparation, resume tuning & mock sessions.
-            </p>
-            <button style={{ ...styles.primary, padding: "8px 14px", fontSize: 13, width: "100%", background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}>
-              Get {monthly.call_limit} Calls (₹{monthly.amount.toLocaleString()}) →
-            </button>
-          </div>}
+        </section>
+
+        <div className="tp-wrap">
+          <div className="tp-capabilities">
+            <span className="tp-compatible-label">FOR THE WAY YOU INTERVIEW</span>
+            <span><span className="tp-platform-glyph tp-platform-zoom" aria-hidden="true">Z</span> Zoom</span>
+            <span><span className="tp-platform-glyph tp-platform-teams" aria-hidden="true">T</span> Microsoft Teams</span>
+            <span><span className="tp-platform-glyph tp-platform-meet" aria-hidden="true">M</span> Google Meet</span>
+            <span><Icon name="desktop" size={18} /> Windows &amp; macOS</span>
+          </div>
+          <section className="tp-features" id="features">
+            <div className="tp-section-head tp-centered-heading">
+              <div><span className="tp-eyebrow">THE TECHPREP DIFFERENCE</span><h2>Not just interview answers.<br /><em>Your entire next chapter.</em></h2></div>
+              <p>A stronger resume. More relevant opportunities. Better practice. Everything around your interview, connected in one workspace.</p>
+            </div>
+            <div className="tp-tool-grid">{tools.map((tool) => (
+              <article className={`tp-tool-card tp-tool-${tool.id}`} key={tool.id}>
+                <div className="tp-tool-art" role="img" aria-label={`${tool.title} illustrative preview`}>
+                  {tool.id === "resume" && <><div className="tp-resume-paper"><span className="tp-paper-heading">YOUR NEXT CHAPTER</span><strong>A resume with direction.</strong><span className="tp-paper-rule" /><div className="tp-paper-lines"><i /><i /><i /></div><span className="tp-paper-heading">EXPERIENCE &amp; IMPACT</span><div className="tp-paper-lines"><i /><i /></div></div><span className="tp-art-callout"><Icon name="check" size={14} /> Make your experience count</span></>}
+                  {tool.id === "practice" && <div className="tp-practice-art"><span className="tp-art-label">SAMPLE PRACTICE</span><span className="tp-practice-mic"><Icon name="mic" size={27} /></span><div className="tp-audio-wave" aria-hidden="true">{Array.from({ length: 23 }, (_, index) => <i key={index} />)}</div><span>Clarity. Confidence. Your own words.</span></div>}
+                  {tool.id === "jobs" && <div className="tp-jobs-art"><span className="tp-art-label">ILLUSTRATIVE ROLES</span>{["Backend Engineer", "Data Engineer"].map((role, index) => <div className="tp-mini-job" key={role}><span className="tp-mini-job-icon"><Icon name={index ? "chart" : "briefcase"} size={20} /></span><div><strong>{role}</strong><span>Explore your next opportunity</span></div><Icon name="arrow" size={14} /></div>)}<span className="tp-job-art-note"><Icon name="search" size={13} /> Your resume sets the direction</span></div>}
+                </div>
+                <div className="tp-tool-copy"><span className="tp-feature-icon"><Icon name={tool.icon} size={20} /></span><h3>{tool.title}</h3><p>{tool.text}</p><span className="tp-feature-tag">{tool.tag}</span><button className="tp-tool-action" onClick={getStarted}>{tool.action}<Icon name="arrow" size={16} /></button></div>
+              </article>
+            ))}</div>
+            <div className="tp-extra-features"><span><Icon name="history" size={19} /><strong>Keep your question history</strong>Return to what you learned.</span><span><Icon name="file" size={19} /><strong>Stay resume-aware</strong>Your background, not a generic script.</span><span><Icon name="shield" size={19} /><strong>Pay with confidence</strong>Verified Razorpay checkout.</span></div>
+          </section>
+          <section className="tp-how" id="how-it-works">
+            <div className="tp-section-head"><div><span className="tp-eyebrow">A LITTLE STRUCTURE GOES A LONG WAY</span><h2>One next step at a time.</h2></div></div>
+            <div className="tp-step-grid">{steps.map(([title, text], index) => (
+              <article className="tp-step" key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>
+            ))}</div>
+            <p className="tp-price-note">Job applications open on the employer’s website. You review and submit each application yourself.</p>
+          </section>
         </div>
-      </section>
 
-      <footer style={styles.footer}>
-        <a href="/privacy/" style={styles.link}>Privacy policy</a>
-        <span aria-hidden> · </span>
-        <a href="mailto:natraj22varma2@gmail.com" style={styles.link}>Contact & Support</a>
-        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#64748b" }}>
-          Ensure compliance with local regulations. Capture audio only with the consent of all meeting participants.
-        </p>
+        <section className="tp-public-pricing" id="pricing">
+          <div className="tp-wrap">
+            <div className="tp-section-head"><div><span className="tp-eyebrow">CHOOSE YOUR PACE</span><h2>A clear next step.<br />A clear price.</h2></div><p>Start with your resume. Add interview assistance when you need it.</p></div>
+            {planError && <p role="alert" className="tp-pricing-notice">Plans couldn’t load: {planError} Refresh the page to try again.</p>}
+            {plansLoading && <p role="status" className="tp-price-note">Loading current plan prices…</p>}
+            {!plansLoading && !planError && plans.length === 0 && <p role="status" className="tp-price-note">Interview plans are currently unavailable. Free ATS scoring is still available.</p>}
+            <div className="tp-price-grid">
+              <article className="tp-price-card"><span className="tp-eyebrow">START HERE</span><h3>ATS resume score</h3><div className="tp-price">Free</div><p>Check your resume against a job description. Unlock the full AI rebuild and PDF/DOCX downloads for ₹10, with 24-hour access.</p><button className="tp-btn" onClick={getStarted}>Check my resume <Icon name="arrow" size={16} /></button></article>
+              <article className="tp-price-card featured"><span className="tp-eyebrow">ONE INTERVIEW AT A TIME</span><h3>{hourly?.name || "Single call"}</h3><div className="tp-price">{hourly ? `₹${hourly.amount.toLocaleString("en-IN")}` : "—"} <small>/ call</small></div><p>{hourly ? `${hourly.duration_minutes} minutes` : "A focused session"} of real-time assistance. Resume-aware answers, live transcription, and reconnect protection within your call window.</p><button className="tp-btn tp-btn-primary" onClick={getStarted}>Prepare for my interview <Icon name="arrow" size={16} /></button></article>
+              <article className="tp-price-card"><span className="tp-eyebrow">ROOM TO BUILD MOMENTUM</span><h3>{monthly?.name || "Monthly plan"}</h3><div className="tp-price">{monthly ? `₹${monthly.amount.toLocaleString("en-IN")}` : "—"} <small>/ month</small></div><p>{monthly ? `${monthly.call_limit} one-hour calls over ${monthly.duration_days} days.` : "Multiple sessions in one plan."} More room for mock interviews, role-specific practice, and your interview schedule.</p><button className="tp-btn" onClick={getStarted}>Choose my plan <Icon name="arrow" size={16} /></button></article>
+            </div>
+            <p className="tp-price-note">Any payment gateway fee is shown before you pay. Resume downloads are a separate ₹10 purchase.</p>
+            {rating?.count > 0 && <p className="tp-price-note">Rated {rating.average.toFixed(1)} / 5 by {rating.count} {rating.count === 1 ? "user" : "users"}</p>}
+          </div>
+        </section>
+        <section className="tp-wrap tp-faq-section">
+          <div className="tp-section-head"><div><span className="tp-eyebrow">A LITTLE MORE CLARITY</span><h2>Good questions.<br />Straight answers.</h2></div><p>Know what’s included, how it works, and where to begin.</p></div>
+          <div className="tp-faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<Icon name="chevron" size={18} /></summary><p>{answer}</p></details>)}</div>
+        </section>
+      </main>
+      <footer className="tp-wrap tp-footer">
+        <div className="tp-footer-row"><span className="tp-brand"><BrandMark />TechPrep</span><nav aria-label="Footer"><a href="/privacy/">Privacy policy</a></nav></div>
+        <p>Prepare thoughtfully. Capture audio only with participants’ consent and follow your interviewer’s rules. Screen-capture protection varies by operating system and sharing method.</p>
       </footer>
-
-      {showDemo && (
-        <InteractiveDemo
-          onClose={() => setShowDemo(false)}
-          onGoToPricing={() => setShowPricing(true)}
-        />
-      )}
-
-      {showPricing && (
-        <SubscriptionPricing
-          onClose={() => setShowPricing(false)}
-          onPaymentSuccess={() => {
-            setShowPricing(false);
-            if (onSignUp) onSignUp();
-            else onSignIn();
-          }}
-        />
-      )}
-    </main>
+      {showDemo && <InteractiveDemo onClose={() => setShowDemo(false)} onGoToPricing={() => { setShowDemo(false); document.getElementById("pricing")?.scrollIntoView(); }} />}
+    </div>
   );
 }
-
-const styles = {
-  page: {
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    minHeight: "100vh",
-    background: "#080a11",
-    color: "#f8fafc",
-    padding: "0 20px 48px",
-    boxSizing: "border-box",
-  },
-  nav: {
-    maxWidth: 1040,
-    margin: "0 auto",
-    padding: "20px 0",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 12,
-    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  brand: { display: "flex", alignItems: "center", gap: 8 },
-  logoDot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: "#4f46e5",
-    boxShadow: "0 0 12px #6366f1",
-  },
-  brandText: { fontSize: 20, fontWeight: 800, letterSpacing: -0.5, color: "#ffffff" },
-  badgePro: {
-    fontSize: 10,
-    fontWeight: 800,
-    background: "rgba(99, 102, 241, 0.2)",
-    color: "#818cf8",
-    padding: "2px 6px",
-    borderRadius: 4,
-    border: "1px solid rgba(99, 102, 241, 0.3)",
-  },
-  navActions: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  navBtn: {
-    background: "none",
-    border: "1px solid rgba(255, 255, 255, 0.12)",
-    color: "#cbd5e1",
-    padding: "8px 14px",
-    borderRadius: 8,
-    fontSize: 13,
-    cursor: "pointer",
-  },
-  navPrimary: {
-    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-    border: 0,
-    color: "#ffffff",
-    padding: "8px 18px",
-    borderRadius: 8,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    boxShadow: "0 2px 12px rgba(99, 102, 241, 0.4)",
-  },
-  hero: { maxWidth: 840, margin: "0 auto", padding: "64px 0 40px", textAlign: "center" },
-  tagline: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 14px",
-    borderRadius: 999,
-    fontSize: 11.5,
-    fontWeight: 700,
-    letterSpacing: 1.1,
-    background: "rgba(99, 102, 241, 0.15)",
-    color: "#a5b4fc",
-    border: "1px solid rgba(99, 102, 241, 0.3)",
-    marginBottom: 20,
-  },
-  heroTitle: {
-    fontSize: "clamp(32px, 5vw, 54px)",
-    lineHeight: 1.15,
-    fontWeight: 800,
-    letterSpacing: -1,
-    margin: "0 0 18px",
-    color: "#ffffff",
-  },
-  gradientText: {
-    background: "linear-gradient(135deg, #818cf8 0%, #c084fc 100%)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-  },
-  lead: {
-    fontSize: 17,
-    lineHeight: 1.6,
-    color: "#94a3b8",
-    margin: "0 auto 32px",
-    maxWidth: 680,
-  },
-  newFeatureCallout: {
-    display: "inline-block",
-    fontSize: 14,
-    lineHeight: 1.6,
-    color: "#e2e8f0",
-    background: "rgba(56, 189, 248, 0.1)",
-    border: "1px solid rgba(56, 189, 248, 0.3)",
-    borderRadius: 10,
-    padding: "10px 16px",
-    margin: "-16px auto 32px",
-    maxWidth: 680,
-  },
-  actions: { display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", marginBottom: 14 },
-  trialNote: { fontSize: 13, color: "#94a3b8", margin: "0 0 32px" },
-  primary: {
-    padding: "13px 28px",
-    border: 0,
-    borderRadius: 12,
-    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: 600,
-    cursor: "pointer",
-    boxShadow: "0 4px 20px rgba(99, 102, 241, 0.4)",
-  },
-  demoAction: {
-    padding: "13px 24px",
-    borderRadius: 12,
-    border: "1px solid rgba(255, 255, 255, 0.16)",
-    color: "#ffffff",
-    fontSize: 15,
-    background: "rgba(255, 255, 255, 0.05)",
-    cursor: "pointer",
-  },
-  secondary: {
-    padding: "13px 24px",
-    borderRadius: 12,
-    border: "1px solid rgba(255, 255, 255, 0.16)",
-    color: "#e2e8f0",
-    fontSize: 15,
-    textDecoration: "none",
-    background: "rgba(255, 255, 255, 0.03)",
-  },
-  statsRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 24,
-    flexWrap: "wrap",
-    padding: "18px 24px",
-    borderRadius: 14,
-    background: "rgba(255, 255, 255, 0.02)",
-    border: "1px solid rgba(255, 255, 255, 0.06)",
-    maxWidth: 680,
-    margin: "0 auto",
-  },
-  statItem: { display: "flex", flexDirection: "column", gap: 2 },
-  statDivider: { width: 1, height: 28, background: "rgba(255, 255, 255, 0.1)" },
-  grid: {
-    maxWidth: 960,
-    margin: "0 auto 48px",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 20,
-  },
-  card: {
-    background: "linear-gradient(145deg, #10131e 0%, #0d0f17 100%)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 16,
-    padding: 24,
-    boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-  },
-  cardIcon: { fontSize: 28, marginBottom: 12 },
-  h2: { margin: "0 0 8px", fontSize: 19, fontWeight: 700, color: "#f8fafc" },
-  cardText: { margin: 0, fontSize: 13.5, color: "#94a3b8", lineHeight: 1.6 },
-  pricingTeaser: {
-    maxWidth: 820,
-    margin: "0 auto 48px",
-    textAlign: "center",
-    padding: "36px 24px",
-    borderRadius: 20,
-    background: "rgba(255, 255, 255, 0.02)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  pricingCards: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 16,
-    textAlign: "left",
-  },
-  priceCardSmall: {
-    background: "rgba(20, 24, 36, 0.6)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 14,
-    padding: 20,
-  },
-  priceCardBadge: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "#38bdf8",
-    background: "rgba(56, 189, 248, 0.15)",
-    padding: "3px 8px",
-    borderRadius: 4,
-    display: "inline-block",
-  },
-  footer: { maxWidth: 900, margin: "32px auto 0", textAlign: "center", fontSize: 13, color: "#64748b" },
-  link: { color: "#818cf8", textDecoration: "none" },
-};

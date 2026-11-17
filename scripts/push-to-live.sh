@@ -35,7 +35,6 @@ rsync -az \
   -e "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -i $SSH_KEY" \
   --exclude "/.env" \
   --exclude ".env.*" \
-  --exclude "/.certs/" \
   --exclude "/desktop/release/" \
   --exclude "/frontend/react-web/dist/" \
   --exclude "/frontend/react-web/public/downloads/" \

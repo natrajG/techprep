@@ -47,14 +47,11 @@ FREE_TRIAL_MINUTES = 10
 # Plans that grant a single call whose window is tracked via subscriptions.valid_until
 # (as opposed to "monthly", whose calls are tracked in the call_sessions table).
 SINGLE_CALL_PLANS = ("hourly_call", FREE_TRIAL_PLAN_ID)
-# Grace window: the client is expected to send a heartbeat roughly every 20s while a call is
-# active. A gap bigger than this means the user was genuinely disconnected (power cut, network
-# drop, app crash) and the excess time is refunded to their call window on reconnect.
+# Grace window: the client sends a heartbeat roughly every 20s while a call is active.
+# Refund a gap only if no AI request occurred in it; trials have a fixed 10-minute window.
 HEARTBEAT_GRACE_SECONDS = 45
-# Cap how much a single disconnect can extend a call window by, so a laptop left asleep/closed
-# for days can't silently grant unlimited call time.
+# Maximum total refundable time per purchased call, across all disconnects.
 MAX_PAUSE_EXTENSION_SECONDS = 6 * 3600
-TEST_PAYMENT_USER = "testuser_win"
 RAZORPAY_API = "https://api.razorpay.com/v1"
 # Flat payment gateway processing fee passed on to the customer for real Razorpay payments.
 PAYMENT_PROCESSING_FEE = 2
@@ -74,7 +71,7 @@ CUSTOM_QR_PATH = CUSTOM_QR_DIR / "merchant_upi_qr.png"
 
 def is_admin(username: str) -> bool:
     admin_user = os.getenv("APP_USERNAME")
-    return bool(admin_user and username.lower() == admin_user.lower())
+    return bool(admin_user and username.lower() == admin_user.lower() and not users.is_registered(username))
 
 
 def _subscription_schema(conn) -> None:
@@ -121,7 +118,8 @@ def _subscription_schema(conn) -> None:
         )"""
     )
     for table, columns in (
-        ("subscriptions", ("call_limit", "duration_minutes", "last_heartbeat_at")),
+        ("subscriptions", ("call_limit", "duration_minutes", "last_heartbeat_at",
+                           "last_ai_activity_at", "paused_seconds")),
         ("call_sessions", ("paused_seconds",)),
         ("payment_orders", ("plan_name", "call_limit", "duration_minutes", "duration_days",
                             "provider_order_id", "provider_payment_id")),
@@ -150,7 +148,6 @@ class CreateOrderRequest(BaseModel):
 
 class VerifyPaymentRequest(BaseModel):
     order_id: str
-    utr_ref: str | None = None
     razorpay_payment_id: str | None = None
     razorpay_signature: str | None = None
 
@@ -204,12 +201,6 @@ def get_plan(conn: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
             f"{plan['call_limit']} one-hour calls for interview preparation & real-time assistance."
         )
     return plan
-
-
-def build_upi_uri(vpa: str, payee_name: str, amount: int, order_id: str, note: str = "TechPrep Subscription") -> str:
-    clean_note = re.sub(r"[^A-Za-z0-9 ]+", "", note)[:30]
-    clean_name = re.sub(r"[^A-Za-z0-9 ]+", "", payee_name)[:40]
-    return f"upi://pay?pa={vpa}&pn={clean_name}&am={amount}&cu=INR&tr={order_id}&tn={clean_note}"
 
 
 def _expire_subscription(sub_id: int, now: int) -> None:
@@ -347,7 +338,9 @@ def activate_monthly_call_if_needed(subscription_id: int) -> None:
 
 
 def subscription_enforced() -> bool:
-    """Returns True if subscription is explicitly enforced via ENFORCE_SUBSCRIPTIONS=true."""
+    """Production always enforces paid access, even if an environment setting is missing."""
+    if settings.production():
+        return True
     val = os.getenv("ENFORCE_SUBSCRIPTIONS", "false").lower()
     return val in ("true", "1", "yes")
 
@@ -380,12 +373,18 @@ def call_window_active(sub: dict[str, Any] | None) -> bool:
 def start_ai_call(user: str, sub: dict[str, Any] | None = None) -> None:
     """Start or reuse a call window for a validated AI or audio request."""
     sub = sub if sub is not None else get_active_subscription(user)
-    if call_window_active(sub):
+    if not sub:
         return
-    if sub["plan_id"] in SINGLE_CALL_PLANS:
-        activate_call_session_if_needed(user)
-    elif sub["plan_id"] == "monthly":
-        activate_monthly_call_if_needed(sub["id"])
+    if not call_window_active(sub):
+        if sub["plan_id"] in SINGLE_CALL_PLANS:
+            activate_call_session_if_needed(user)
+        elif sub["plan_id"] == "monthly":
+            activate_monthly_call_if_needed(sub["id"])
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE subscriptions SET last_ai_activity_at = ? WHERE id = ? AND status = 'active'",
+            (int(time.time()), sub["id"]),
+        )
 
 
 def require_ai_call(request: Request, user: str = Depends(require_subscription)) -> str:
@@ -460,36 +459,43 @@ def subscription_status(user: str = Depends(require_auth)) -> dict:
 
 @router.post("/heartbeat")
 def subscription_heartbeat(user: str = Depends(require_auth)) -> dict:
-    """Called periodically by the client while a call is active. If the gap since the last
-    heartbeat is bigger than the expected interval, the user was disconnected (power cut,
-    network drop, app crash) and that gap is refunded to their current call window."""
+    """Refund a bounded disconnect only if no AI was used since the previous heartbeat."""
     now = int(time.time())
     extended = 0
     with get_db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            """SELECT id, plan_id, session_start, valid_until, last_heartbeat_at
+            """SELECT id, plan_id, session_start, valid_until, last_heartbeat_at,
+                      last_ai_activity_at, COALESCE(paused_seconds, 0)
                FROM subscriptions WHERE username = ? AND status = 'active' ORDER BY id DESC LIMIT 1""",
             (user,),
         ).fetchone()
         if not row:
             return {"ok": True, "extended_seconds": 0}
-        sub_id, plan_id, session_start, valid_until, last_heartbeat_at = row
+        sub_id, plan_id, session_start, valid_until, last_heartbeat_at, last_ai_activity_at, paused_seconds = row
         gap = (now - last_heartbeat_at) if last_heartbeat_at else 0
-        if gap > HEARTBEAT_GRACE_SECONDS:
-            extended = min(gap - HEARTBEAT_GRACE_SECONDS, MAX_PAUSE_EXTENSION_SECONDS)
-        if extended and plan_id in SINGLE_CALL_PLANS and session_start and valid_until:
-            conn.execute("UPDATE subscriptions SET valid_until = valid_until + ? WHERE id = ?", (extended, sub_id))
-        elif extended and plan_id == "monthly":
+        idle_gap = gap > HEARTBEAT_GRACE_SECONDS and (
+            last_ai_activity_at is None or last_ai_activity_at < last_heartbeat_at
+        )
+        if idle_gap and plan_id == "hourly_call" and session_start and valid_until:
+            extended = min(gap - HEARTBEAT_GRACE_SECONDS, max(0, MAX_PAUSE_EXTENSION_SECONDS - paused_seconds))
+            if extended:
+                conn.execute(
+                    "UPDATE subscriptions SET valid_until = valid_until + ?, paused_seconds = ? WHERE id = ?",
+                    (extended, paused_seconds + extended, sub_id),
+                )
+        elif idle_gap and plan_id == "monthly":
             cs = conn.execute(
-                "SELECT id, started_at FROM call_sessions WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, started_at, COALESCE(paused_seconds, 0) FROM call_sessions WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
                 (sub_id,),
             ).fetchone()
-            if cs and cs[1] + CALL_SECONDS > now:
-                conn.execute(
-                    "UPDATE call_sessions SET paused_seconds = COALESCE(paused_seconds, 0) + ? WHERE id = ?",
-                    (extended, cs[0]),
-                )
+            if cs and cs[1] <= last_heartbeat_at < cs[1] + CALL_SECONDS + cs[2]:
+                extended = min(gap - HEARTBEAT_GRACE_SECONDS, max(0, MAX_PAUSE_EXTENSION_SECONDS - cs[2]))
+                if extended:
+                    conn.execute(
+                        "UPDATE call_sessions SET paused_seconds = paused_seconds + ? WHERE id = ?",
+                        (extended, cs[0]),
+                    )
         conn.execute("UPDATE subscriptions SET last_heartbeat_at = ? WHERE id = ?", (now, sub_id))
     return {"ok": True, "extended_seconds": extended}
 
@@ -500,36 +506,27 @@ def create_payment_order(req: CreateOrderRequest, user: str = Depends(require_au
     now = int(time.time())
     with get_db() as conn:
         plan = get_plan(conn, req.plan_id)
-    is_test = user.lower() == TEST_PAYMENT_USER
-    # Real Razorpay payments pass on a flat ₹2 gateway processing fee on top of the plan price.
-    processing_fee = 0 if is_test else PAYMENT_PROCESSING_FEE
+    # Pass on the flat ₹2 gateway processing fee on top of the plan price.
+    processing_fee = PAYMENT_PROCESSING_FEE
     charge_amount = plan["amount"] + processing_fee
-    provider_order_id = None
-    upi_uri = ""
-    if is_test:
-        upi_uri = build_upi_uri(
-            vpa=DEFAULT_UPI_VPA, payee_name=DEFAULT_UPI_NAME, amount=charge_amount,
-            order_id=order_id, note=f"TechPrep {plan['name']}",
-        )
-    else:
-        provider_order = razorpay_request(
-            "POST", "/orders",
-            json={"amount": charge_amount * 100, "currency": "INR",
-                  "receipt": order_id, "notes": {"plan_id": req.plan_id}},
-        )
-        if (not isinstance(provider_order, dict)
-                or not isinstance(provider_order.get("id"), str)
-                or provider_order.get("amount") != charge_amount * 100
-                or provider_order.get("currency") != "INR"):
-            raise HTTPException(502, "Payment provider returned an invalid order")
-        provider_order_id = provider_order["id"]
+    provider_order = razorpay_request(
+        "POST", "/orders",
+        json={"amount": charge_amount * 100, "currency": "INR",
+              "receipt": order_id, "notes": {"plan_id": req.plan_id}},
+    )
+    if (not isinstance(provider_order, dict)
+            or not isinstance(provider_order.get("id"), str)
+            or provider_order.get("amount") != charge_amount * 100
+            or provider_order.get("currency") != "INR"):
+        raise HTTPException(502, "Payment provider returned an invalid order")
+    provider_order_id = provider_order["id"]
     with get_db() as conn:
         conn.execute(
             """INSERT INTO payment_orders
                (order_id, username, plan_id, plan_name, amount, upi_uri, status, created_at,
                 call_limit, duration_minutes, duration_days, provider_order_id)
                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)""",
-            (order_id, user, plan["id"], plan["name"], charge_amount, upi_uri, now,
+            (order_id, user, plan["id"], plan["name"], charge_amount, "", now,
              plan.get("call_limit"), plan.get("duration_minutes"), plan.get("duration_days"), provider_order_id),
         )
     return {
@@ -538,12 +535,9 @@ def create_payment_order(req: CreateOrderRequest, user: str = Depends(require_au
         "amount": charge_amount,
         "base_amount": plan["amount"],
         "processing_fee": processing_fee,
-        "payment_mode": "test_utr" if is_test else "razorpay",
+        "payment_mode": "razorpay",
         "razorpay_order_id": provider_order_id,
-        "razorpay_key_id": None if is_test else razorpay_credentials()[0],
-        "upi_uri": upi_uri,
-        "upi_vpa": DEFAULT_UPI_VPA if is_test else None,
-        "upi_name": DEFAULT_UPI_NAME if is_test else None,
+        "razorpay_key_id": razorpay_credentials()[0],
     }
 
 
@@ -565,31 +559,25 @@ def verify_payment(req: VerifyPaymentRequest, user: str = Depends(require_auth))
         if status == "verified":
             return {"status": "success", "message": "Payment already verified", "order_id": order_id}
 
-        if user.lower() == TEST_PAYMENT_USER and provider_order_id is None:
-            if not req.utr_ref or not re.fullmatch(r"[0-9]{12}", req.utr_ref):
-                raise HTTPException(422, "Enter a 12-digit UTR")
-            reference = req.utr_ref
-            payment_id = None
-        else:
-            if (not provider_order_id or not req.razorpay_payment_id or not req.razorpay_signature
-                    or not re.fullmatch(r"pay_[A-Za-z0-9]+", req.razorpay_payment_id)):
-                raise HTTPException(422, "Razorpay payment details are required")
-            _, secret = razorpay_credentials()
-            signed = f"{provider_order_id}|{req.razorpay_payment_id}".encode()
-            expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(expected, req.razorpay_signature):
-                raise HTTPException(400, "Invalid payment signature")
-            payment = razorpay_request("GET", f"/payments/{req.razorpay_payment_id}")
-            if (not isinstance(payment, dict)
-                    or payment.get("id") != req.razorpay_payment_id
-                    or payment.get("order_id") != provider_order_id
-                    or payment.get("status") != "captured"
-                    or payment.get("currency") != "INR"
-                    or type(payment.get("amount")) is not int
-                    or payment["amount"] != amount * 100):
-                raise HTTPException(402, "Payment not captured for the full subscription amount")
-            reference = req.razorpay_payment_id
-            payment_id = req.razorpay_payment_id
+        if (not provider_order_id or not req.razorpay_payment_id or not req.razorpay_signature
+                or not re.fullmatch(r"pay_[A-Za-z0-9]+", req.razorpay_payment_id)):
+            raise HTTPException(422, "Razorpay payment details are required")
+        _, secret = razorpay_credentials()
+        signed = f"{provider_order_id}|{req.razorpay_payment_id}".encode()
+        expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, req.razorpay_signature):
+            raise HTTPException(400, "Invalid payment signature")
+        payment = razorpay_request("GET", f"/payments/{req.razorpay_payment_id}")
+        if (not isinstance(payment, dict)
+                or payment.get("id") != req.razorpay_payment_id
+                or payment.get("order_id") != provider_order_id
+                or payment.get("status") != "captured"
+                or payment.get("currency") != "INR"
+                or type(payment.get("amount")) is not int
+                or payment["amount"] != amount * 100):
+            raise HTTPException(402, "Payment not captured for the full subscription amount")
+        reference = req.razorpay_payment_id
+        payment_id = req.razorpay_payment_id
 
         if payment_id and conn.execute(
             "SELECT 1 FROM payment_orders WHERE provider_payment_id = ?", (payment_id,)

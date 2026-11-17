@@ -143,12 +143,13 @@ export default function Root() {
     else setSession("signedOut");
   }
 
-  if (session === "checking") return <p style={{ fontFamily: "system-ui", padding: 16 }}>Loading…</p>;
+  if (session === "checking") return <div className="tp-loading" role="status">Preparing your TechPrep workspace…</div>;
   if (session === "unreachable") {
     return (
-      <main style={{ fontFamily: "system-ui", padding: 16 }}>
-        <p>Cannot reach the backend. Start it and retry.</p>
-        <button onClick={() => setReload((n) => n + 1)}>Retry</button>
+      <main className="tp-loading">
+        <h1>We couldn’t connect.</h1>
+        <p role="alert">Check your connection and try again. If this continues, the service may be temporarily unavailable.</p>
+        <button className="tp-btn tp-btn-primary" onClick={() => setReload((n) => n + 1)}>Try again</button>
       </main>
     );
   }
@@ -158,7 +159,7 @@ export default function Root() {
         <>
           <Landing
             onSignIn={() => setAuthView("signin")}
-            onSignUp={() => setAuthView("signup")}
+            onSignUp={config?.signup_enabled ? () => setAuthView("signup") : undefined}
             storeUrl={config?.store_url}
           />
           {authView && (

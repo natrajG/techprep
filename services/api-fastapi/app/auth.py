@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
@@ -12,6 +13,7 @@ from . import users
 TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_HOURS", "12")) * 3600
 # Without AUTH_SECRET, tokens are valid only until the backend restarts.
 _SECRET = (os.getenv("AUTH_SECRET") or secrets.token_hex(32)).encode()
+logger = logging.getLogger("techprep")
 
 
 def configured() -> bool:
@@ -64,4 +66,8 @@ async def require_auth(authorization: str = Header(default="")) -> str:
     user, kind, sid = claims
     if kind and not users.session_current(user, kind, sid):
         raise HTTPException(401, "Signed in on another device. Sign in again.", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        users.note_activity(user)
+    except Exception:
+        logger.exception("Could not update user activity timestamp")
     return user

@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import tempfile
 import unittest
@@ -197,7 +199,7 @@ class ResumeRebuildApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_rebuild_preview_unlocks_after_payment(self):
         from app import resume_payment
 
-        payer = resume_payment.TEST_PAYMENT_USER
+        payer = "resume_rebuild_payer"
         payer_headers = {"Authorization": f"Bearer {auth.issue_token(payer)}"}
         fake = _fake_client(REBUILT_PAYLOAD)
         with patch.object(llm, "client", return_value=fake):
@@ -206,14 +208,29 @@ class ResumeRebuildApiTests(unittest.IsolatedAsyncioTestCase):
             )
         version_id = res.json()["version_id"]
 
-        order = (await self.client.post(
-            "/api/v1/resume-builder/payment/create-order", headers=payer_headers,
-        )).json()
-        await self.client.post(
-            "/api/v1/resume-builder/payment/verify",
-            json={"order_id": order["order_id"], "utr_ref": "123456789012"},
-            headers=payer_headers,
-        )
+        payment_id = "pay_rebuildtest"
+        provider_order_id = "order_rebuildtest"
+        def provider_request(method, path, **kwargs):
+            if method == "POST":
+                return {"id": provider_order_id, "amount": kwargs["json"]["amount"], "currency": "INR"}
+            return {"id": payment_id, "order_id": provider_order_id, "status": "captured",
+                    "currency": "INR", "amount": resume_payment.RESUME_REBUILD_PRICE * 100}
+
+        with patch.dict("os.environ", {"RAZORPAY_KEY_ID": "rzp_test_key", "RAZORPAY_KEY_SECRET": "test-secret"}):
+            with patch.object(resume_payment, "razorpay_request", side_effect=provider_request):
+                order = (await self.client.post(
+                    "/api/v1/resume-builder/payment/create-order", headers=payer_headers,
+                )).json()
+                signature = hmac.new(
+                    b"test-secret", f"{provider_order_id}|{payment_id}".encode(), hashlib.sha256,
+                ).hexdigest()
+                verified = await self.client.post(
+                    "/api/v1/resume-builder/payment/verify",
+                    json={"order_id": order["order_id"], "razorpay_payment_id": payment_id,
+                          "razorpay_signature": signature},
+                    headers=payer_headers,
+                )
+                self.assertEqual(verified.status_code, 200)
 
         get_res = await self.client.get(
             f"/api/v1/resume-builder/rebuild/{version_id}", headers=payer_headers,

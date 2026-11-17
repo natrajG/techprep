@@ -76,7 +76,7 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
           best-effort capture protection. Sign in again in the app.
           {localNetwork ? " Keep this server running and stay on the same network." : " An internet connection is required."}
         </p>
-        <details className="dd-details" open>
+        <details className="dd-details">
           <summary>🛡️ Opening on macOS ("TechPrep is damaged" Gatekeeper warning)</summary>
           <div className="hud-muted" style={{ marginTop: "0.5rem", lineHeight: "1.5" }}>
             <p style={{ margin: "0 0 0.5rem" }}>

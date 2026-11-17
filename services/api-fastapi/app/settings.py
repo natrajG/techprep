@@ -62,6 +62,8 @@ def validate() -> None:
         raise ValueError("STORE_APP_PUBLISHED must be true or false.")
     if signup in ("false", "0", "no") and not username:
         raise ValueError("Configure a bootstrap login before starting with sign-up disabled.")
+    if os.getenv("ENFORCE_SUBSCRIPTIONS", "").lower() not in ("true", "1", "yes"):
+        raise ValueError("Production requires ENFORCE_SUBSCRIPTIONS=true.")
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("Production requires OPENAI_API_KEY for the assistant.")
     for name in ("USERS_DB", "DESKTOP_RELEASE_DIR"):

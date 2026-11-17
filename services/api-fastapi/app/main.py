@@ -20,6 +20,7 @@ from starlette.concurrency import run_in_threadpool
 from . import admin, auth, downloads, google_auth, llm, mailer, rate_limit, ratings, settings, subscriptions, users
 from . import feedback
 from . import history as history_module
+from . import job_search
 from . import mock_interview
 from . import resume_builder
 from . import resume_payment
@@ -73,6 +74,7 @@ app.include_router(downloads.router)
 app.include_router(subscriptions.router)
 app.include_router(feedback.router)
 app.include_router(mock_interview.router)
+app.include_router(job_search.router)
 app.include_router(resume_builder.router)
 app.include_router(resume_rebuild.router)
 app.include_router(resume_payment.router)
@@ -575,10 +577,8 @@ async def update_email(req: EmailChangeRequest, request: Request, user: str = De
 
 
 async def start_call(request: Request, user: str) -> None:
-    """The subscription was already read for this request; only the first request of a call window writes."""
-    sub = request.state.subscription
-    if not subscriptions.call_window_active(sub):
-        await run_in_threadpool(subscriptions.start_ai_call, user, sub)
+    """Track every valid AI request so a heartbeat gap with AI activity cannot be refunded."""
+    await run_in_threadpool(subscriptions.start_ai_call, user, request.state.subscription)
 
 
 @app.post("/api/v1/transcribe", dependencies=[Depends(rate_limit.ai_access)])

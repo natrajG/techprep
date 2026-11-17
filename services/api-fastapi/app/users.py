@@ -29,6 +29,13 @@ _schema_lock = threading.Lock()
 # Password hashing is slow and uses 16 MB each, so it gets a small dedicated pool that cannot
 # starve request handling or exhaust memory during a burst of logins.
 _hash_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="password-hash")
+_activity_cache: dict[str, int] = {}
+_activity_lock = threading.Lock()
+_last_inactive_sweep = 0
+
+ACTIVITY_WRITE_INTERVAL_SECONDS = 6 * 3600
+INACTIVE_DATA_RETENTION_SECONDS = 365 * 24 * 3600
+INACTIVE_SWEEP_INTERVAL_SECONDS = 24 * 3600
 
 
 def register_schema(hook) -> None:
@@ -67,6 +74,9 @@ def _users_schema(conn: sqlite3.Connection) -> None:
             f"UPDATE users SET created_at = COALESCE({', '.join(fallback_parts)}) WHERE created_at IS NULL",
             (int(time.time()),),
         )
+    if "last_active" not in {column[1] for column in conn.execute("PRAGMA table_info(users)")}:
+        conn.execute("ALTER TABLE users ADD COLUMN last_active INTEGER")
+        conn.execute("UPDATE users SET last_active = COALESCE(created_at, ?) WHERE last_active IS NULL", (int(time.time()),))
     _ensure_token_usage(conn)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires INTEGER NOT NULL)"
@@ -158,16 +168,26 @@ def normalize_email(email: str) -> str | None:
 
 def create_user(username: str, password: str, email: str | None = None) -> bool:
     """False when the username or email is already registered."""
+    reserved = {"testuser_win", os.getenv("APP_USERNAME", "").lower()}
+    if username.lower() in reserved:
+        return False
     salt = secrets.token_bytes(16)
     try:
         with connect() as conn:
             conn.execute(
-                "INSERT INTO users (username, salt, hash, email, created_at) VALUES (?, ?, ?, ?, ?)",
-                (username, salt, _hash(password, salt), email, int(time.time())),
+                "INSERT INTO users (username, salt, hash, email, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?)",
+                (username, salt, _hash(password, salt), email, int(time.time()), int(time.time())),
             )
     except sqlite3.IntegrityError:
         return False
     return True
+
+
+def is_registered(username: str) -> bool:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (username,)
+        ).fetchone() is not None
 
 
 def verify_user(username: str, password: str) -> str | None:
@@ -234,6 +254,42 @@ def set_password(username: str, password: str) -> None:
         conn.execute("UPDATE users SET salt = ?, hash = ? WHERE username = ?", (salt, _hash(password, salt), username))
         conn.execute("DELETE FROM user_sessions WHERE username = ?", (username,))
     _session_cache.clear()
+
+
+def _purge_inactive_resume_data(conn: sqlite3.Connection, cutoff: int) -> None:
+    existing_tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    inactive_user_sql = "SELECT username FROM users WHERE COALESCE(last_active, created_at, 0) <= ?"
+    for table in ("job_search_profiles", "resume_versions"):
+        if table not in existing_tables:
+            continue
+        conn.execute(
+            f"DELETE FROM {table} WHERE username IN ({inactive_user_sql})",
+            (cutoff,),
+        )
+
+
+def note_activity(username: str) -> None:
+    """Best-effort user activity touch + periodic cleanup for long-inactive resume data."""
+    global _last_inactive_sweep
+    now = int(time.time())
+    key = username.lower()
+    with _activity_lock:
+        last_seen = _activity_cache.get(key, 0)
+        should_touch = now - last_seen >= ACTIVITY_WRITE_INTERVAL_SECONDS
+        should_sweep = now - _last_inactive_sweep >= INACTIVE_SWEEP_INTERVAL_SECONDS
+        if not should_touch and not should_sweep:
+            return
+        _activity_cache[key] = now
+        if should_sweep:
+            _last_inactive_sweep = now
+    with connect() as conn:
+        if should_touch:
+            conn.execute(
+                "UPDATE users SET last_active = ? WHERE username = ? AND COALESCE(last_active, 0) < ?",
+                (now, username, now - ACTIVITY_WRITE_INTERVAL_SECONDS),
+            )
+        if should_sweep:
+            _purge_inactive_resume_data(conn, now - INACTIVE_DATA_RETENTION_SECONDS)
 
 
 # One live session per account and client kind (desktop or web). Signing in again replaces the

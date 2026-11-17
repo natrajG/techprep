@@ -43,6 +43,17 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(res.status_code, 403)
 
+    async def test_existing_database_collision_cannot_grant_admin_privileges(self):
+        self.assertTrue(users.create_user(self.admin_user, "ValidPassword123!", "wrong-admin@example.com"))
+        with patch.dict("os.environ", {"APP_USERNAME": self.admin_user}):
+            self.assertFalse(subscriptions.is_admin(self.admin_user))
+            response = await self.client.post(
+                "/api/v1/admin/grant-subscription",
+                json={"username": self.regular_user, "plan_id": "monthly"},
+                headers=self.admin_headers,
+            )
+        self.assertEqual(response.status_code, 403)
+
     async def test_admin_can_list_users_with_token_usage_and_subs(self):
         with patch.dict("os.environ", {"APP_USERNAME": self.admin_user}):
             res = await self.client.get("/api/v1/admin/users", headers=self.admin_headers)

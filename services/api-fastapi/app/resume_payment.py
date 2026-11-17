@@ -11,18 +11,15 @@ import hmac
 import os
 import re
 import time
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import resume_rebuild, users
+from . import resume_rebuild, resume_renderer, users
 from .auth import require_auth
 from .subscriptions import (
-    DEFAULT_UPI_NAME,
-    DEFAULT_UPI_VPA,
-    TEST_PAYMENT_USER,
-    build_upi_uri,
     razorpay_credentials,
     razorpay_request,
 )
@@ -59,55 +56,42 @@ users.register_schema(_schema)
 
 class VerifyResumePaymentRequest(BaseModel):
     order_id: str
-    utr_ref: str | None = None
     razorpay_payment_id: str | None = None
     razorpay_signature: str | None = None
 
 
 @router.post("/payment/create-order")
 def create_resume_payment_order(user: str = Depends(require_auth)) -> dict:
-    order_id = f"TPR_{int(time.time())}_{user.lower()}"
+    order_id = f"TPR_{int(time.time())}_{secrets.token_hex(4)}"
     now = int(time.time())
-    is_test = user.lower() == TEST_PAYMENT_USER
     amount = RESUME_REBUILD_PRICE
-    provider_order_id = None
-    upi_uri = ""
-    if is_test:
-        upi_uri = build_upi_uri(
-            vpa=DEFAULT_UPI_VPA, payee_name=DEFAULT_UPI_NAME, amount=amount,
-            order_id=order_id, note="TechPrep ATS Resume Rebuild",
-        )
-    else:
-        provider_order = razorpay_request(
-            "POST", "/orders",
-            json={"amount": amount * 100, "currency": "INR", "receipt": order_id,
-                  "notes": {"feature": "resume_rebuild_24h"}},
-        )
-        if (not isinstance(provider_order, dict)
-                or not isinstance(provider_order.get("id"), str)
-                or provider_order.get("amount") != amount * 100
-                or provider_order.get("currency") != "INR"):
-            raise HTTPException(502, "Payment provider returned an invalid order")
-        provider_order_id = provider_order["id"]
+    provider_order = razorpay_request(
+        "POST", "/orders",
+        json={"amount": amount * 100, "currency": "INR", "receipt": order_id,
+              "notes": {"feature": "resume_rebuild_24h"}},
+    )
+    if (not isinstance(provider_order, dict)
+            or not isinstance(provider_order.get("id"), str)
+            or provider_order.get("amount") != amount * 100
+            or provider_order.get("currency") != "INR"):
+        raise HTTPException(502, "Payment provider returned an invalid order")
+    provider_order_id = provider_order["id"]
 
     with users.connect() as conn:
         conn.execute(
             """INSERT INTO resume_payment_orders
                (order_id, username, amount, upi_uri, provider_order_id, status, created_at)
                VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
-            (order_id, user, amount, upi_uri, provider_order_id, now),
+            (order_id, user, amount, "", provider_order_id, now),
         )
 
     return {
         "order_id": order_id,
         "amount": amount,
         "entitlement_hours": ENTITLEMENT_WINDOW_SECONDS // 3600,
-        "payment_mode": "test_utr" if is_test else "razorpay",
+        "payment_mode": "razorpay",
         "razorpay_order_id": provider_order_id,
-        "razorpay_key_id": None if is_test else razorpay_credentials()[0],
-        "upi_uri": upi_uri,
-        "upi_vpa": DEFAULT_UPI_VPA if is_test else None,
-        "upi_name": DEFAULT_UPI_NAME if is_test else None,
+        "razorpay_key_id": razorpay_credentials()[0],
     }
 
 
@@ -130,29 +114,24 @@ def verify_resume_payment(req: VerifyResumePaymentRequest, user: str = Depends(r
                 "entitlement_expires_at": entitlement_expires_at,
             }
 
-        if user.lower() == TEST_PAYMENT_USER and provider_order_id is None:
-            if not req.utr_ref or not re.fullmatch(r"[0-9]{12}", req.utr_ref):
-                raise HTTPException(422, "Enter a 12-digit UTR")
-            payment_id = None
-        else:
-            if (not provider_order_id or not req.razorpay_payment_id or not req.razorpay_signature
-                    or not re.fullmatch(r"pay_[A-Za-z0-9]+", req.razorpay_payment_id)):
-                raise HTTPException(422, "Razorpay payment details are required")
-            _, secret = razorpay_credentials()
-            signed = f"{provider_order_id}|{req.razorpay_payment_id}".encode()
-            expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(expected, req.razorpay_signature):
-                raise HTTPException(400, "Invalid payment signature")
-            payment = razorpay_request("GET", f"/payments/{req.razorpay_payment_id}")
-            if (not isinstance(payment, dict)
-                    or payment.get("id") != req.razorpay_payment_id
-                    or payment.get("order_id") != provider_order_id
-                    or payment.get("status") != "captured"
-                    or payment.get("currency") != "INR"
-                    or type(payment.get("amount")) is not int
-                    or payment["amount"] != amount * 100):
-                raise HTTPException(402, "Payment not captured for the full amount")
-            payment_id = req.razorpay_payment_id
+        if (not provider_order_id or not req.razorpay_payment_id or not req.razorpay_signature
+                or not re.fullmatch(r"pay_[A-Za-z0-9]+", req.razorpay_payment_id)):
+            raise HTTPException(422, "Razorpay payment details are required")
+        _, secret = razorpay_credentials()
+        signed = f"{provider_order_id}|{req.razorpay_payment_id}".encode()
+        expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, req.razorpay_signature):
+            raise HTTPException(400, "Invalid payment signature")
+        payment = razorpay_request("GET", f"/payments/{req.razorpay_payment_id}")
+        if (not isinstance(payment, dict)
+                or payment.get("id") != req.razorpay_payment_id
+                or payment.get("order_id") != provider_order_id
+                or payment.get("status") != "captured"
+                or payment.get("currency") != "INR"
+                or type(payment.get("amount")) is not int
+                or payment["amount"] != amount * 100):
+            raise HTTPException(402, "Payment not captured for the full amount")
+        payment_id = req.razorpay_payment_id
 
         if payment_id and conn.execute(
             "SELECT 1 FROM resume_payment_orders WHERE provider_payment_id = ?", (payment_id,)
@@ -189,17 +168,26 @@ def get_entitlement(user: str = Depends(require_auth)) -> dict:
 
 @router.get("/version/{version_id}/download")
 def download_resume_version(
-    version_id: int, fmt: str = Query(..., pattern=r"^(pdf|docx)$"), user: str = Depends(require_auth)
+    version_id: int, fmt: str = Query(..., pattern=r"^(pdf|docx|rtf|doc)$"), user: str = Depends(require_auth)
 ) -> Response:
     if _entitlement_expiry(user) is None:
         raise HTTPException(402, "Pay ₹%d to unlock resume downloads for 24 hours." % RESUME_REBUILD_PRICE)
-    data = resume_rebuild.get_version_file(version_id, user, fmt)
+    if fmt in ("pdf", "docx"):
+        data = resume_rebuild.get_version_file(version_id, user, fmt)
+    else:
+        version = resume_rebuild.get_version(version_id, user)
+        if not version:
+            raise HTTPException(404, "Resume version not found.")
+        preview = version["preview"]
+        data = resume_renderer.render_rtf(preview) if fmt == "rtf" else resume_renderer.render_doc(preview)
     if data is None:
         raise HTTPException(404, "Resume version not found.")
-    media_type = (
-        "application/pdf" if fmt == "pdf"
-        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+    media_type = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "rtf": "application/rtf",
+        "doc": "application/msword",
+    }[fmt]
     filename = f"resume-rebuilt-{version_id}.{fmt}"
     return Response(
         content=data, media_type=media_type,

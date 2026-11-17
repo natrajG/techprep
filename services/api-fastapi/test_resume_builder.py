@@ -121,6 +121,22 @@ class ResumeAnalyzeApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report_res.status_code, 200)
         report = report_res.json()
         self.assertEqual(report["overall_score"], body["overall_score"])
+        self.assertFalse(body["cached"])
+
+    async def test_analyze_reuses_previous_report_when_resume_and_jd_unchanged(self):
+        first = await self.client.post(
+            "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+        )
+        self.assertEqual(first.status_code, 200)
+        first_body = first.json()
+        second = await self.client.post(
+            "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+        )
+        self.assertEqual(second.status_code, 200)
+        second_body = second.json()
+        self.assertTrue(second_body["cached"])
+        self.assertEqual(second_body["id"], first_body["id"])
+        self.assertEqual(second_body["overall_score"], first_body["overall_score"])
 
     async def test_report_rejects_other_users_analysis(self):
         res = await self.client.post(
@@ -133,15 +149,35 @@ class ResumeAnalyzeApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.status_code, 404)
 
     async def test_daily_cap_is_enforced(self):
-        for _ in range(resume_builder.DAILY_ANALYZE_LIMIT):
+        for i in range(resume_builder.DAILY_ANALYZE_LIMIT):
             res = await self.client.post(
-                "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+                "/api/v1/resume-builder/analyze",
+                json={"resume": f"{STRONG_RESUME}\nRun {i}", "jd": SAMPLE_JD},
+                headers=self.headers,
             )
             self.assertEqual(res.status_code, 200)
         res = await self.client.post(
-            "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+            "/api/v1/resume-builder/analyze", json={"resume": f"{STRONG_RESUME}\nRun overflow", "jd": SAMPLE_JD}, headers=self.headers,
         )
         self.assertEqual(res.status_code, 429)
+
+    async def test_cached_repeat_does_not_consume_daily_limit(self):
+        with patch.object(resume_builder, "DAILY_ANALYZE_LIMIT", 1):
+            first = await self.client.post(
+                "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+            )
+            self.assertEqual(first.status_code, 200)
+            second = await self.client.post(
+                "/api/v1/resume-builder/analyze", json={"resume": STRONG_RESUME, "jd": SAMPLE_JD}, headers=self.headers,
+            )
+            self.assertEqual(second.status_code, 200)
+            self.assertTrue(second.json()["cached"])
+            changed = await self.client.post(
+                "/api/v1/resume-builder/analyze",
+                json={"resume": STRONG_RESUME + "\nExtra update", "jd": SAMPLE_JD},
+                headers=self.headers,
+            )
+            self.assertEqual(changed.status_code, 429)
 
 
 if __name__ == "__main__":

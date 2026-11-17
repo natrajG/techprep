@@ -35,6 +35,7 @@ export default function UserProfileModal({
 }) {
   const [activeTab, setActiveTab] = useState("subscription"); // 'subscription' | 'profile' | 'settings' | 'download'
   const [showAtsScore, setShowAtsScore] = useState(false);
+  const [resumeUploaded, setResumeUploaded] = useState(() => Boolean(localStorage.getItem("resume_uploaded_at")));
 
   const hasActiveSub = subscription && subscription.status === "active";
   const timeLeftMinutes = subscription?.time_remaining_seconds
@@ -206,7 +207,13 @@ export default function UserProfileModal({
                     onChange={(e) => setResume(e.target.value)}
                   />
                 </label>
-                <ResumeUploadButton onExtracted={setResume} style={{ marginTop: -4 }} />
+                <ResumeUploadButton
+                  onExtracted={(text) => {
+                    setResume(text);
+                    setResumeUploaded(true);
+                  }}
+                  style={{ marginTop: -4 }}
+                />
 
                 <label style={{ ...styles.fieldLabel, marginTop: 12 }}>
                   Target Job Description &amp; Requirements
@@ -231,8 +238,9 @@ export default function UserProfileModal({
                     type="button"
                     style={{ ...styles.subscribeBtn, marginTop: 14, alignSelf: "flex-start" }}
                     onClick={() => setShowAtsScore(true)}
+                    disabled={!resume.trim() || !resumeUploaded}
                   >
-                    📊 Check ATS Score
+                    {resumeUploaded ? "📊 Check ATS Score" : "📄 Upload Resume PDF to Check ATS Score"}
                   </button>
                 )}
               </div>
@@ -240,7 +248,13 @@ export default function UserProfileModal({
           )}
 
           {showAtsScore && !desktop && (
-            <AtsScorePanel resume={resume} jd={jd} onClose={() => setShowAtsScore(false)} />
+            <AtsScorePanel
+              resume={resume}
+              jd={jd}
+              uploadedResume={resumeUploaded}
+              requireUploadedResume={true}
+              onClose={() => setShowAtsScore(false)}
+            />
           )}
 
           {activeTab === "settings" && (

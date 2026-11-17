@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
 import {
   analyzeResume, createResumePaymentOrder, downloadResumeVersion, getRebuildVersion,
   getResumeEntitlement, rebuildResume, verifyResumePayment,
@@ -6,6 +8,16 @@ import {
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
+const ATS_GATE_STORAGE_KEY = "ats_gate";
+
+function resumeFingerprint(text) {
+  const source = (text || "").trim();
+  let hash = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+  }
+  return `${source.length}:${Math.abs(hash)}`;
+}
 
 function loadRazorpay() {
   if (window.Razorpay) return Promise.resolve();
@@ -27,7 +39,13 @@ function scoreColor(score, max) {
 
 // Shown from the existing "Resume & JD" tab via a "Check ATS Score" button — reuses whatever
 // resume/JD text is already in those fields rather than asking the user to upload anything again.
-export default function AtsScorePanel({ resume, jd, onClose }) {
+export default function AtsScorePanel({
+  resume,
+  jd,
+  uploadedResume = Boolean(localStorage.getItem("resume_uploaded_at")),
+  requireUploadedResume = false,
+  onClose,
+}) {
   const [status, setStatus] = useState("idle"); // idle | loading | done | error
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -35,20 +53,44 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
   const [rebuildError, setRebuildError] = useState("");
   const [rebuilt, setRebuilt] = useState(null);
   const [entitlement, setEntitlement] = useState(null); // { active, entitlement_expires_at }
-  const [payStatus, setPayStatus] = useState("idle"); // idle | loading | awaiting_utr | verifying | error
+  const [payStatus, setPayStatus] = useState("idle"); // idle | loading | verifying | done | error
   const [payError, setPayError] = useState("");
-  const [payOrder, setPayOrder] = useState(null);
-  const [utrRef, setUtrRef] = useState("");
-  const [downloadingFmt, setDownloadingFmt] = useState(""); // "pdf" | "docx" | ""
+  const [downloadingFmt, setDownloadingFmt] = useState(""); // "pdf" | "docx" | "rtf" | "doc" | ""
   const [downloadError, setDownloadError] = useState("");
   const [facts, setFacts] = useState({}); // category -> user-supplied text, answering facts_needed prompts
 
   async function runAnalysis() {
+    const trimmedResume = (resume || "").trim();
+    if (!trimmedResume) {
+      setError("Upload your resume PDF first, then run ATS score.");
+      setStatus("error");
+      return;
+    }
+    if (requireUploadedResume && !uploadedResume) {
+      setError("Resume upload is required before ATS scoring.");
+      setStatus("error");
+      return;
+    }
+    if (trimmedResume.length < 80 || trimmedResume.split(/\s+/).length < 15) {
+      setError("Resume text looks too short. Upload a full resume PDF before ATS scoring.");
+      setStatus("error");
+      return;
+    }
     setStatus("loading");
     setError("");
     try {
-      const data = await analyzeResume(API, resume, jd, fetch, localStorage, notifyExpired);
+      const data = await analyzeResume(API, trimmedResume, jd, fetch, localStorage, notifyExpired);
       setResult(data);
+      localStorage.setItem(
+        ATS_GATE_STORAGE_KEY,
+        JSON.stringify({
+          fingerprint: resumeFingerprint(trimmedResume),
+          score: data.overall_score,
+          max: data.overall_max,
+          updatedAt: Date.now(),
+        }),
+      );
+      window.dispatchEvent(new Event("ats-updated"));
       setStatus("done");
     } catch (e) {
       setError(e.message);
@@ -77,6 +119,16 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
         API, resume, jd, result?.id ?? null, factsAsText(), fetch, localStorage, notifyExpired
       );
       setRebuilt(data);
+      localStorage.setItem(
+        ATS_GATE_STORAGE_KEY,
+        JSON.stringify({
+          fingerprint: resumeFingerprint(resume),
+          score: data.rebuilt_score,
+          max: data.overall_max,
+          updatedAt: Date.now(),
+        }),
+      );
+      window.dispatchEvent(new Event("ats-updated"));
       setRebuildStatus("done");
       getResumeEntitlement(API, fetch, localStorage, notifyExpired).then(setEntitlement).catch(() => {});
     } catch (e) {
@@ -90,11 +142,6 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
     setPayError("");
     try {
       const order = await createResumePaymentOrder(API, fetch, localStorage, notifyExpired);
-      setPayOrder(order);
-      if (order.payment_mode === "test_utr") {
-        setPayStatus("awaiting_utr");
-        return;
-      }
       await loadRazorpay();
       const checkout = new window.Razorpay({
         key: order.razorpay_key_id,
@@ -117,12 +164,6 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
       setPayError(e.message);
       setPayStatus("error");
     }
-  }
-
-  async function submitUtr(e) {
-    e.preventDefault();
-    if (!payOrder || !utrRef.trim()) return;
-    await verifyAndUnlock(payOrder.order_id, { utr_ref: utrRef.trim() });
   }
 
   async function verifyAndUnlock(orderId, details) {
@@ -156,11 +197,10 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(event) => event.stopPropagation()}>
-        <div style={styles.header}>
-          <h3 style={styles.title}>ATS Score</h3>
-          <button style={styles.closeBtn} onClick={onClose} title="Close">✕</button>
+    <Dialog label="Free ATS score and analysis" onClose={onClose} style={{ maxWidth: 600 }}>
+        <div className="tp-dialog-heading">
+          <div><span className="tp-eyebrow">YOUR EXPERIENCE, IN FOCUS</span><h2>Free ATS score &amp; analysis</h2></div>
+          <button className="tp-btn" onClick={onClose} aria-label="Close ATS analysis"><Icon name="close" size={18} /></button>
         </div>
         <div style={styles.body}>
           {status === "idle" && (
@@ -175,7 +215,7 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                   Add your resume text in this tab first, then run the check.
                 </p>
               )}
-              <button style={styles.primaryBtn} onClick={runAnalysis} disabled={!resume?.trim()}>
+              <button className="tp-btn tp-btn-primary" onClick={runAnalysis} disabled={!resume?.trim()}>
                 Check ATS Score
               </button>
             </>
@@ -245,7 +285,7 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                     onClick={runRebuild}
                     disabled={rebuildStatus === "loading"}
                   >
-                    {rebuildStatus === "loading" ? "Rebuilding your resume…" : "Rebuild ATS-Friendly Resume"}
+                    {rebuildStatus === "loading" ? "Rebuilding your resume…" : "Rebuild ATS-Friendly Resume (Preview Free • Unlock ₹10)"}
                   </button>
                 )}
               </div>
@@ -335,19 +375,21 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
                       >
                         {downloadingFmt === "docx" ? "Downloading…" : "⬇ Download DOCX"}
                       </button>
-                    </div>
-                  ) : payStatus === "awaiting_utr" ? (
-                    <form onSubmit={submitUtr} style={styles.downloadRow}>
-                      <input
-                        style={styles.utrInput}
-                        placeholder="12-digit UTR"
-                        value={utrRef}
-                        onChange={(e) => setUtrRef(e.target.value)}
-                      />
-                      <button style={styles.primaryBtn} type="submit" disabled={payStatus === "verifying"}>
-                        Confirm Payment
+                      <button
+                        style={styles.secondaryBtn}
+                        onClick={() => handleDownload("rtf")}
+                        disabled={downloadingFmt === "rtf"}
+                      >
+                        {downloadingFmt === "rtf" ? "Downloading…" : "⬇ Download RTF"}
                       </button>
-                    </form>
+                      <button
+                        style={styles.secondaryBtn}
+                        onClick={() => handleDownload("doc")}
+                        disabled={downloadingFmt === "doc"}
+                      >
+                        {downloadingFmt === "doc" ? "Downloading…" : "⬇ Download DOC"}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       style={styles.primaryBtn}
@@ -372,8 +414,7 @@ export default function AtsScorePanel({ resume, jd, onClose }) {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -386,6 +427,13 @@ function FactsForm({ asks, facts, setFacts }) {
       {asks.map((ask) => (
         <label key={ask.category} style={styles.factsLabel}>
           {ask.label}
+          {ask.category === "achievements" && (
+            <small style={styles.factsHint}>
+              Add real outcomes you can verify — for example:
+              {" "}“Reduced API latency by 35%”, “Resolved 120+ tickets/month”, “Maintained 99.9% uptime”,
+              {" "}“Employee of the Year 2024”, “Top Performer Q2”.
+            </small>
+          )}
           <textarea
             style={styles.factsInput}
             rows={2}
@@ -400,29 +448,14 @@ function FactsForm({ asks, facts, setFacts }) {
 }
 
 const styles = {
-  overlay: {
-    position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.6)",
-    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100,
-  },
-  modal: {
-    width: 480, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
-    background: "#10131d", border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: 14, color: "#f8fafc", boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5)",
-  },
-  header: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 18px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  title: { margin: 0, fontSize: 16, fontWeight: 700 },
-  closeBtn: { background: "transparent", border: "none", color: "#94a3b8", fontSize: 16, cursor: "pointer" },
   body: { display: "flex", flexDirection: "column", gap: 14, padding: 18 },
-  hint: { color: "#cbd5e1", margin: 0, fontSize: 13 },
+  hint: { color: "#d3cedf", margin: 0, fontSize: 13 },
   primaryBtn: {
-    background: "linear-gradient(135deg, #38bdf8 0%, #6366f1 100%)", color: "#080a11", border: "none",
+    background: "#7058db", color: "#ffffff", border: "none",
     padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
   },
   secondaryBtn: {
-    background: "transparent", color: "#cbd5e1", border: "1px solid #334155",
+    background: "transparent", color: "#d3cedf", border: "1px solid #334155",
     padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer",
   },
   overallRow: {
@@ -432,7 +465,7 @@ const styles = {
   overallLabel: { fontSize: 13.5, fontWeight: 600, color: "#e2e8f0" },
   overallScore: { fontSize: 18, fontWeight: 800 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-  th: { textAlign: "left", padding: "6px 4px", color: "#94a3b8", fontWeight: 600, fontSize: 12 },
+  th: { textAlign: "left", padding: "6px 4px", color: "#aaa4bc", fontWeight: 600, fontSize: 12 },
   td: { padding: "6px 4px", color: "#e2e8f0" },
   issuesBox: { background: "rgba(251, 191, 36, 0.08)", border: "1px solid rgba(251, 191, 36, 0.2)", borderRadius: 10, padding: 12 },
   issuesTitle: { margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#fbbf24" },
@@ -443,17 +476,14 @@ const styles = {
     borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 6,
   },
   downloadRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  utrInput: {
-    flex: 1, minWidth: 120, background: "#0b0e16", border: "1px solid #334155", borderRadius: 8,
-    color: "#f8fafc", padding: "8px 10px", fontSize: 13,
-  },
-  disclaimer: { margin: 0, fontSize: 11, color: "#64748b" },
-  lockedBullet: { color: "#94a3b8", fontStyle: "italic" },
+  disclaimer: { margin: 0, fontSize: 11, color: "#9890ab" },
+  lockedBullet: { color: "#aaa4bc", fontStyle: "italic" },
   factsBox: {
     background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.1)",
     borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10,
   },
   factsLabel: { display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, fontWeight: 600, color: "#e2e8f0" },
+  factsHint: { color: "#fcd34d", fontSize: 11.5, fontWeight: 500, lineHeight: 1.6 },
   factsInput: {
     background: "#0b0e16", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc",
     padding: "8px 10px", fontSize: 12.5, fontWeight: 400, resize: "vertical", fontFamily: "inherit",

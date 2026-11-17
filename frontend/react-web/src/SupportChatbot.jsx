@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Icon from "./Icon";
 
 // Curated FAQ knowledge base covering how to use TechPrep. Matched by keyword
 // scoring so the assistant feels responsive without needing a backend call.
@@ -12,8 +13,8 @@ const FAQ = [
       "Here's the full journey, step by step:\n" +
       "1) Sign up with your email and password on the website.\n" +
       "2) Log in — you'll land on your Web Dashboard.\n" +
-      "3) Choose a subscription: ₹199 Hourly Call or ₹1,999 Monthly, and complete payment (Razorpay card/UPI, or " +
-      "scan the UPI QR and enter the UTR reference).\n" +
+      "3) Upload your resume for free ATS scoring and personalized job search. Full AI resume rebuilds and downloads cost ₹10 for 24-hour access.\n" +
+      "For live assistance, choose the call or monthly plan and complete the verified Razorpay checkout. The total, including any gateway fee, is shown before payment.\n" +
       "4) Once payment is verified, your plan activates instantly on the dashboard.\n" +
       "5) Download the desktop app for Windows or macOS from the dashboard and install it.\n" +
       "6) Sign in on the desktop app with the same account — this opens the invisible HUD overlay.\n" +
@@ -26,15 +27,15 @@ const FAQ = [
     keywords: ["download", "desktop app", "install", "windows", "mac", "macos", "app"],
     answer:
       "You can download the desktop app from the Web Dashboard after signing in — look for the \"Download Desktop App\" " +
-      "section. It's available for Windows and macOS. The desktop app is required to run the live overlay; the browser " +
-      "is only used to manage your account and subscription.",
+      "section. It's available for Windows and macOS. The desktop app is required for live audio and the overlay; " +
+      "the browser supports resume preparation, job search, mock interviews, and account management.",
   },
   {
     keywords: ["overlay", "hud", "invisible", "stealth", "screen share", "screen-share", "detect", "zoom", "teams", "meet"],
     answer:
       "The HUD overlay is a transparent, always-on-top glass window that floats on your desktop. It uses native OS-level " +
-      "content protection, so it stays completely invisible to Zoom, Teams, and Google Meet screen shares — the " +
-      "interviewer never sees it.",
+      "content protection where supported. Protection varies by operating system and screen-sharing method; " +
+      "test your setup first and follow your interviewer’s rules.",
   },
   {
     keywords: ["mic", "microphone", "audio", "listen", "hear", "system audio", "loopback"],
@@ -210,7 +211,7 @@ export default function SupportChatbot() {
   return (
     <div style={styles.wrapper}>
       {open && (
-        <div style={styles.panel} role="dialog" aria-label="TechPrep support assistant">
+        <div className="tp-support-panel" style={styles.panel} role="dialog" aria-label="TechPrep support assistant">
           <div style={styles.header}>
             <div style={styles.headerLeft}>
               <span style={styles.headerIcon}>✦</span>
@@ -279,10 +280,11 @@ export default function SupportChatbot() {
       <button
         type="button"
         style={styles.launcher}
+        className="tp-support-launch"
         onClick={() => setOpen((value) => !value)}
         aria-label={open ? "Close support chat" : "Open support chat"}
       >
-        {open ? "×" : "💬"}
+        <Icon name={open ? "close" : "help"} size={23} />
       </button>
 
       <style>{`
@@ -295,8 +297,8 @@ export default function SupportChatbot() {
   );
 }
 
-const GOLD = "#e8c15e";
-const GOLD_SOFT = "rgba(232, 193, 94, 0.35)";
+const ACCENT = "#bda9f6";
+const ACCENT_SOFT = "rgba(189, 169, 246, 0.35)";
 
 const styles = {
   wrapper: {
@@ -310,12 +312,12 @@ const styles = {
     width: 60,
     height: 60,
     borderRadius: "50%",
-    border: `1px solid ${GOLD_SOFT}`,
+    border: `1px solid ${ACCENT_SOFT}`,
     background: "linear-gradient(145deg, #15172a 0%, #0a0b14 100%)",
-    color: GOLD,
+    color: ACCENT,
     fontSize: 24,
     cursor: "pointer",
-    boxShadow: `0 8px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.04), 0 0 24px ${GOLD_SOFT}`,
+    boxShadow: "0 8px 30px rgba(0, 0, 0, 0.45)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -332,16 +334,16 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     background: "linear-gradient(165deg, #121428 0%, #0a0b14 60%, #07080f 100%)",
-    border: `1px solid ${GOLD_SOFT}`,
-    boxShadow: `0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(232, 193, 94, 0.12)`,
+    border: `1px solid ${ACCENT_SOFT}`,
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.55)",
   },
   header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     padding: "16px 18px",
-    borderBottom: `1px solid rgba(232, 193, 94, 0.18)`,
-    background: "linear-gradient(135deg, rgba(232,193,94,0.12) 0%, rgba(124,58,237,0.08) 100%)",
+    borderBottom: "1px solid rgba(189, 169, 246, 0.18)",
+    background: "rgba(189, 169, 246, 0.08)",
   },
   headerLeft: { display: "flex", alignItems: "center", gap: 10 },
   headerIcon: {
@@ -351,8 +353,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "linear-gradient(135deg, #e8c15e 0%, #b8860b 100%)",
-    color: "#1a1206",
+    background: "#7058db",
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: 800,
     flexShrink: 0,
@@ -407,9 +409,9 @@ const styles = {
   suggestions: { display: "flex", flexDirection: "column", gap: 8, marginTop: 4 },
   suggestionChip: {
     textAlign: "left",
-    background: "rgba(232, 193, 94, 0.08)",
-    border: `1px solid ${GOLD_SOFT}`,
-    color: GOLD,
+    background: "rgba(189, 169, 246, 0.08)",
+    border: `1px solid ${ACCENT_SOFT}`,
+    color: ACCENT,
     padding: "8px 12px",
     borderRadius: 10,
     fontSize: 12.5,
@@ -437,8 +439,8 @@ const styles = {
     height: 38,
     borderRadius: 10,
     border: 0,
-    background: "linear-gradient(135deg, #e8c15e 0%, #b8860b 100%)",
-    color: "#1a1206",
+    background: "#7058db",
+    color: "#ffffff",
     fontSize: 15,
     fontWeight: 700,
     cursor: "pointer",

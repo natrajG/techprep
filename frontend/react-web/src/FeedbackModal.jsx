@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { submitFeedback } from "./feedback.mjs";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
 const CATEGORIES = [
-  { id: "bug", label: "🐞 Bug report" },
-  { id: "suggestion", label: "💡 Suggestion" },
-  { id: "other", label: "💬 Other" },
+  { id: "bug", label: "Bug report" },
+  { id: "suggestion", label: "Suggestion" },
+  { id: "other", label: "Other" },
 ];
 
 export default function FeedbackModal({ onClose }) {
@@ -35,11 +37,10 @@ export default function FeedbackModal({ onClose }) {
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(event) => event.stopPropagation()}>
-        <div style={styles.header}>
-          <h3 style={styles.title}>Send Feedback</h3>
-          <button style={styles.closeBtn} onClick={onClose} title="Close">✕</button>
+    <Dialog label="Send feedback" onClose={onClose} style={{ maxWidth: 500 }}>
+        <div className="tp-dialog-heading">
+          <div><span className="tp-eyebrow">LET’S MAKE THIS BETTER</span><h2>We’re listening.</h2></div>
+          <button className="tp-btn" onClick={onClose} aria-label="Close feedback"><Icon name="close" size={18} /></button>
         </div>
         {sent ? (
           <div style={styles.body}>
@@ -65,41 +66,24 @@ export default function FeedbackModal({ onClose }) {
               />
             </label>
             {error && <p role="alert" style={{ color: "#fca5a5", margin: 0 }}>{error}</p>}
-            <button type="submit" style={styles.primaryBtn} disabled={sending}>
+            <button type="submit" className="tp-btn tp-btn-primary" disabled={sending}>
               {sending ? "Sending…" : "Send Feedback"}
             </button>
           </form>
         )}
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
 const styles = {
-  overlay: {
-    position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.6)",
-    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-  },
-  modal: {
-    width: 420, maxWidth: "90vw", background: "#10131d", border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: 14, color: "#f8fafc", boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5)",
-  },
-  header: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 18px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-  },
-  title: { margin: 0, fontSize: 16, fontWeight: 700 },
-  closeBtn: {
-    background: "transparent", border: "none", color: "#94a3b8", fontSize: 16, cursor: "pointer",
-  },
   body: { display: "flex", flexDirection: "column", gap: 14, padding: 18 },
-  label: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#cbd5e1" },
+  label: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#d3cedf" },
   input: {
     padding: "8px 10px", borderRadius: 8, border: "1px solid #334155", background: "#151b2b",
     color: "#fff", fontSize: 13, fontFamily: "inherit",
   },
   primaryBtn: {
-    background: "linear-gradient(135deg, #38bdf8 0%, #6366f1 100%)", color: "#080a11", border: "none",
+    background: "#7058db", color: "#ffffff", border: "none",
     padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
   },
 };

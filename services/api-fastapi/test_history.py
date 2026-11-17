@@ -64,6 +64,13 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         # Ordered by created_at DESC (newest first)
         self.assertEqual(data["items"][0]["question"], "Explain database indexing in PostgreSQL")
 
+        page = await self.client.get("/api/v1/history?limit=1&offset=1", headers=self.headers)
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.json()["total"], 2)
+        self.assertEqual(page.json()["limit"], 1)
+        self.assertEqual(page.json()["offset"], 1)
+        self.assertEqual([item["id"] for item in page.json()["items"]], [q1_id])
+
         # Search filter
         search_res = await self.client.get("/api/v1/history?search=react", headers=self.headers)
         self.assertEqual(search_res.status_code, 200)

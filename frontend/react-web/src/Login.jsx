@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
+import BrandMark from "./BrandMark";
 
 export default function Login({
   onSubmit,
@@ -129,20 +132,22 @@ export default function Login({
     reset: "Choose a new password.",
     done: "",
   }[mode] ?? "Sign in to open the assistant.";
+  const title = { signup: "Your next chapter starts here.", forgot: "Let’s get you back in.", reset: "A fresh start.", done: "You’re all set." }[mode] ?? "Welcome back.";
+  const Wrapper = isModal ? Dialog : "div";
 
   return (
-    <div style={isModal ? styles.modalOverlay : styles.page} onClick={isModal ? onBack : undefined}>
-      <form onSubmit={submit} style={styles.card} onClick={(e) => e.stopPropagation()}>
+    <Wrapper {...(isModal ? { onClose: onBack, label: title, className: "tp-auth" } : { style: styles.page, className: "tp-auth-page" })}>
+      <form onSubmit={submit} style={isModal ? { position: "relative" } : styles.card}>
         {isModal && (
-          <button type="button" style={styles.closeBtn} onClick={onBack} aria-label="Close">
-            ✕
+          <button type="button" style={{ ...styles.closeBtn, top: -8, right: -8, width: 36, height: 36 }} onClick={onBack} aria-label="Close sign in">
+            <Icon name="close" size={17} />
           </button>
         )}
-        <div style={styles.brandRow}>
-          <span style={styles.logoDot}></span>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>TechPrep</h2>
+        <div className="tp-brand">
+          <BrandMark />TechPrep
         </div>
-        <p style={{ margin: "4px 0 16px", color: "#94a3b8", fontSize: 13.5 }}>{heading}</p>
+        <h2 className="tp-auth-title">{title}</h2>
+        <p style={{ margin: "0 0 26px", color: "#aaa4bc", fontSize: 14 }}>{heading}</p>
 
         {mode === "done" ? (
           <>
@@ -206,7 +211,7 @@ export default function Login({
             )}
             {error && <p role="alert" style={{ color: "#f87171", margin: "0 0 10px", fontSize: 13 }}>{error}</p>}
             {notice && <p role="status" style={{ color: "#86efac", margin: "0 0 10px", fontSize: 13 }}>{notice}</p>}
-            <button type="submit" style={styles.button} disabled={busy}>
+            <button type="submit" className="tp-btn tp-btn-primary" style={{ width: "100%", marginTop: 8 }} disabled={busy}>
               {busy ? "Please wait…" : {
                 signup: "Create account", forgot: "Send reset link", reset: "Set new password",
               }[mode] ?? "Sign in"}
@@ -236,25 +241,11 @@ export default function Login({
         )}
         <a href="/privacy/" target="_blank" rel="noopener noreferrer" style={styles.privacy}>Privacy policy</a>
       </form>
-    </div>
+    </Wrapper>
   );
 }
 
 const styles = {
-  modalOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(3, 7, 18, 0.75)",
-    backdropFilter: "blur(8px)",
-    display: "grid",
-    placeItems: "center",
-    zIndex: 1000,
-    padding: 16,
-    boxSizing: "border-box",
-  },
   page: {
     fontFamily: "system-ui, -apple-system, sans-serif",
     minHeight: "100vh",
@@ -282,7 +273,7 @@ const styles = {
     right: 14,
     background: "rgba(255, 255, 255, 0.08)",
     border: "none",
-    color: "#94a3b8",
+    color: "#aaa4bc",
     fontSize: 16,
     width: 28,
     height: 28,
@@ -291,8 +282,6 @@ const styles = {
     display: "grid",
     placeItems: "center",
   },
-  brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
-  logoDot: { width: 8, height: 8, borderRadius: "50%", background: "#4f46e5", boxShadow: "0 0 10px #6366f1" },
   googleButton: {
     width: "100%",
     display: "flex",
@@ -356,5 +345,5 @@ const styles = {
     fontSize: 13,
     cursor: "pointer",
   },
-  privacy: { display: "block", marginTop: 16, color: "#64748b", fontSize: 12, textAlign: "center", textDecoration: "none" },
+  privacy: { display: "block", marginTop: 16, color: "#aaa4bc", fontSize: 12, textAlign: "center", textDecoration: "none" },
 };

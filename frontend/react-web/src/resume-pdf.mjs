@@ -2,7 +2,7 @@
 // uploaded anywhere. Resume/job-description text only ever lives in this tab's memory and
 // localStorage, same as the existing paste-text fields; nothing is sent to or stored on the server.
 
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_BYTES = 2 * 1024 * 1024;
 
 let pdfjsPromise = null;
 
@@ -25,7 +25,7 @@ export async function extractPdfText(file) {
     throw new Error("Please choose a PDF file.");
   }
   if (file.size > MAX_PDF_BYTES) {
-    throw new Error("PDF is too large (10 MB max).");
+    throw new Error("PDF is too large (2 MB max).");
   }
   const pdfjs = await getPdfjs();
   const buffer = await file.arrayBuffer();

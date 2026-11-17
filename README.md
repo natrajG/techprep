@@ -48,6 +48,44 @@ techprep/
 
 ## TechPrep Live Assistant
 
+### Browser design system
+
+The public site and signed-in workspace use the scoped **Editorial Workspace** theme in
+`frontend/react-web/src/design-system.css`: ink surfaces, warm-white text, violet actions,
+shared spacing, and responsive layouts. `main.jsx` adds `tp-browser` only outside Electron,
+so these rules do not change the transparent desktop HUD. Shared SVG icons live in `Icon.jsx`;
+supporting descriptions use 15–16px text and workspace field hints use an explicit 14px
+size, without enlarging headings or relying on the browser's smaller `<small>` default.
+`Dialog.jsx` provides modal focus containment, Escape/backdrop dismissal, scroll locking,
+and focus restoration, including nested confirmations.
+
+`BrandMark.jsx` shares the rounded lowercase `ia` mark in dark violet (`#5f46bf`)
+across the browser brand surfaces, with the same SVG used as the favicon. The product
+name remains TechPrep. A subtle violet glow extends behind the logo and TechPrep wordmark, and the dashboard header
+omits the workspace tagline. Clicking the dashboard logo returns to the top of the page.
+Navigation and wordmarks use locally hosted Manrope; its OFL
+license is distributed in `public/fonts/OFL-Manrope.txt`. Page headings and body fonts
+are unchanged. The public navigation collapses at tablet widths to avoid crowding.
+
+After sign-in, an amber (`rgb(251, 191, 36)`) desktop-requirement notice appears above
+quick actions, with direct subscription and desktop-download entry points. Existing
+subscribers see plan management; exhausted call credits show renewal. The notice
+reuses the existing pricing dialog without changing automatic web plan prompts,
+payment checks, desktop functionality, or entitlements.
+Subscription buttons use a dark fill and muted amber text rather than a bright
+yellow block; the stronger amber is reserved for the notice heading and accents.
+
+The landing page leads with the interview HUD, an interactive illustrative desktop preview,
+and dedicated visual cards for ATS Resume Builder, Mock Interviews, and Resume-Based Job Search.
+Preview mode buttons switch between live answers, resume context, and capture protection;
+these are demonstrations, not a live interview session. Capture-protection limitations and
+the distinction between free ATS scoring and the paid resume unlock are stated explicitly.
+
+The dashboard follows resume → job search → desktop preparation. Billing stays in the
+account menu, and interview history loads only after **Full View**. ATS scoring is free;
+the full resume rebuild and PDF/DOCX downloads remain a separate ₹10 unlock for 24 hours.
+Plan prices and call allowances are still loaded from the API.
+
 Roles: **Lead Python Developer** and **Python Full Stack Developer**.
 
 1. Backend (Python 3.10+): put `OPENAI_API_KEY=sk-...` in `.env` at the repo root
@@ -90,57 +128,22 @@ plan duration in the account profile or web dashboard. Changes apply only to new
 orders; existing orders and subscriptions retain their purchased terms. Previously purchased
 unlimited monthly subscriptions remain unlimited. The account profile shows remaining calls and provider-reported
 AI input/output token usage since tracking began. Audio transcription is not included in the
-token count, and tokens have no separate quota. Set `ENFORCE_SUBSCRIPTIONS=true` to require
-an active paid plan for AI endpoints; existing paid plans always respect their call limits.
+token count, and tokens have no separate quota. Production requires `ENFORCE_SUBSCRIPTIONS=true`
+and always enforces an active subscription (including the one-time free trial) for paid AI endpoints;
+existing plans also respect their call limits.
 Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` on the API server and enable automatic payment
-capture in Razorpay. All accounts except `testuser_win` pay via Razorpay Checkout; the API
-confirms the signed payment is captured in INR for the full order amount before activating
-the purchased plan. A user-entered UTR alone cannot verify a real payment. The `testuser_win`
-account is an explicit test-only exception: any 12-digit numeric UTR activates its plan
-without payment. Keep that account's credentials private and do not allow public signup
-of this username in a production deployment.
+capture in Razorpay. All accounts pay via Razorpay Checkout; the API confirms the signed
+payment is captured in INR for the full order amount before activating the purchased plan
+or unlocking a rebuilt resume download. A user-entered UTR cannot verify a payment.
+Only the bootstrap administrator can grant free subscriptions. The legacy `testuser_win`
+username is reserved and its payment bypass has been removed.
 The public privacy policy is available at `/privacy/` without signing in; deploy the latest
 web build before using its URL in a Store listing.
 
-### HTTPS on your local network (free certificate)
+### Production HTTPS deployment
 
-Use the host computer's Wi-Fi/Ethernet IP address, not `localhost`, on other devices.
-For example, if its LAN IP is `192.168.1.20`:
-
-```bash
-bash infra/setup-https.sh 192.168.1.20
-./run.sh lan
-```
-
-Open **https://192.168.1.20:5173/** from another device on the same network
-(or **https://localhost:5173/** on the host). This mode starts the API and HTTPS web server
-without the desktop overlay. Ctrl+C stops both. The normal `./run.sh` desktop mode remains HTTP.
-
-**Trust the certificate first:** securely copy only `.certs/ca.crt` to each client,
-including the host if you use its browser, and install it as a trusted certificate authority:
-
-- Windows: import into **Trusted Root Certification Authorities** for the current user.
-- macOS: import into Keychain Access and set **Always Trust** for SSL.
-- Ubuntu/Debian: copy to `/usr/local/share/ca-certificates/techprep-local.crt`, then run
-  `sudo update-ca-certificates`. If your browser uses its own certificate store, also import
-  the certificate under its certificate settings / Authorities (including Firefox when needed).
-
-Restart the browser after trusting it. Merely bypassing a certificate warning is not a substitute
-for trust; browser audio/screen-capture features need a trusted secure context.
-This is a private local CA, not a publicly trusted certificate or an internet deployment.
-**Never share `.certs/ca-key.pem` or `.certs/server-key.pem`.** The `.certs/` directory is git-ignored.
-To remove trust later, remove the imported TechPrep Local CA from the device/browser certificate store.
-
-The server certificate lasts one year. Rerun the setup command and restart `./run.sh lan`
-to renew it or after the host's IP changes; the existing CA is reused, so client trust stays valid.
-You can supply multiple IP addresses to the setup command.
-Allow inbound TCP **5173** only from your trusted LAN if a firewall blocks access.
-Do not forward this development server through your router to the internet.
-The backend binds to loopback in LAN mode; login, uploads, and streamed answers use the
-same HTTPS origin through Vite's proxy, so port 8000 need not be exposed.
-Leave `VITE_API_URL` unset for this setup; an explicit override must point to an HTTPS API.
-HTTP and HTTPS have separate browser storage, so sign in again and re-enter locally saved
-resume/job details when switching.
+In production, TechPrep is deployed with automatic publicly-trusted TLS via Caddy (see `infra/lightsail/Caddyfile`).
+No local certificate authorities or manual certificate imports are required.
 
 ### Desktop app (floating, transparent, stays open without a browser)
 
@@ -168,15 +171,6 @@ then; the Windows download instead offers Store installation once the Store rele
 and shows a coming-soon message until then. Sign in again in the installed desktop app.
 The LAN installers connect to the server configured at build time; no Python or
 environment-variable setup is needed on the client. Keep the server running.
-For local HTTPS, trust the server's CA certificate first; the download panel
-includes a certificate download and instructions (LAN mode only). Browser login is not transferred to the app.
-The installer and public CA certificate download endpoints require a valid login.
-Installers are not served from Vite's public directory.
-
-**Windows client with the LAN server:** use the desktop executable, trust `.certs/ca.crt`
-in Windows, and set `APP_URL=https://<LAN-IP>:5173/` before launching it. No Python backend
-is needed on that Windows client. See the
-[Windows LAN setup](docs/desktop-capture-protection.md#connect-the-windows-app-to-the-existing-lan-https-server).
 The browser's floating window cannot hide itself from screen sharing; the Windows
 desktop app provides system-audio loopback and a best-effort capture-protection toggle.
 
@@ -205,6 +199,33 @@ cd ../../desktop && npm install && npm start
   Linux source development retains automatic backend startup.
 - See [desktop capture protection and packaging](docs/desktop-capture-protection.md) for platform limits,
   build/run commands, signing requirements, and the manual capture verification matrix.
+
+## Resume-based Job Search (Web Dashboard)
+
+The web dashboard now includes a **Resume-Based Job Search** section that:
+
+- infers default role and skills from your saved resume (editable before searching),
+- queries **Jooble** (provider list is configurable),
+- normalizes results into TechPrep's own database tables,
+- caches results per user/query for 24 hours.
+
+API endpoints:
+
+- `POST /api/v1/jobs/suggest` — infer role/location/skills from resume text
+- `POST /api/v1/jobs/search` — search normalized jobs with provider health status
+
+Environment variables for `services/api-fastapi`:
+
+- `JOOBLE_API_KEY`
+- `JOOBLE_COUNTRY_DOMAIN` (optional, for example `jooble.org` or `uk.jooble.org`)
+- `JOB_SEARCH_PROVIDERS` (default `jooble`; use `all` or comma-separated values like `jooble,usajobs`)
+- `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (only when Adzuna is enabled)
+- `USAJOBS_API_KEY`, `USAJOBS_USER_AGENT` (only when USAJOBS is enabled)
+
+Notes:
+
+- Provider failures are isolated; available sources still return results.
+- Applications complete on external job sites. TechPrep supports **select-all + open selected applications** in one click, but it does not auto-submit multi-site forms.
 
 ## Next Build Items
 
