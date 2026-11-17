@@ -951,8 +951,10 @@ async def search_jobs(req: SearchRequest, user: str = Depends(require_auth)) -> 
             error = unique_errors[0] if len(unique_errors) == 1 else "; ".join(unique_errors[:2])
         statuses.append({"source": provider.source, "status": aggregate["status"], "error": error})
 
-    if not all_jobs and all(status["status"] != "ok" for status in statuses):
-        raise HTTPException(503, "No job provider is currently available. Configure provider keys and try again.")
+    # Degrade gracefully when every provider is unavailable (missing keys, upstream rate limits,
+    # or transient outages): return an empty result set instead of a scary 503, matching the
+    # same "no jobs matched" empty state the UI already shows for zero-result searches. The
+    # per-provider status/error below still lets admins diagnose the real cause from the logs.
 
     seen_keys: set[str] = set()
     deduped: list[dict[str, Any]] = []

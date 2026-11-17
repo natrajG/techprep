@@ -274,16 +274,21 @@ export default function WebDashboard({
                 )}
                 <div className="tp-file-status">
                   {resumeUploaded && <><Icon name="check" size={14} /> PDF ready for analysis</>}
-                  {(resume.trim() || pasteMode) && (
+                  {(resume.trim() || resumeUploaded) && (
                   <ResumeUploadButton
                     onExtracted={(text) => {
                       setResume(text);
                       setResumeUploaded(true);
+                      setPasteMode(false);
                     }}
                     style={{ marginTop: 0 }}
                     label="Replace PDF"
                     buttonStyle={{ background: "transparent", color: "#c3b5ff", border: "none", padding: "4px 0", fontSize: 14 }}
                   />
+                  )}
+                  {pasteMode && !resumeUploaded && !resume.trim() && (
+                    <button className="tp-btn tp-btn-text" style={{ padding: "4px 0", minHeight: 28, fontSize: 14 }}
+                      onClick={() => setPasteMode(false)}>Upload PDF instead</button>
                   )}
                 </div>
                 <small className="tp-muted">Supported Formats: doc, docx, rtf, pdf, upto 2 MB</small>

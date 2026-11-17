@@ -250,14 +250,20 @@ class JobSearchApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(second_body["cached"])
             self.assertEqual(second_body["count"], 2)
 
-    async def test_search_all_providers_down_returns_503(self):
+    async def test_search_all_providers_down_returns_empty_results_gracefully(self):
+        # Upstream outages/rate limits/missing keys should degrade to the same friendly
+        # "no jobs matched" empty state as a legitimate zero-result search, not a scary 503.
         with patch("app.job_search._providers", return_value=[_ProviderError()]):
             response = await self.client.post(
                 "/api/v1/jobs/search",
                 json={"role": "backend engineer", "location": "Bengaluru"},
                 headers=self.headers,
             )
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertEqual(body["jobs"], [])
+            self.assertEqual(body["count"], 0)
+            self.assertEqual(body["provider_statuses"][0]["status"], "error")
 
     async def test_search_partial_provider_failure_still_returns_jobs(self):
         with patch("app.job_search._providers", return_value=[_ProviderOk(), _ProviderError()]):
