@@ -345,7 +345,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                             </button>
                           </td>
                           <td style={styles.td}>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
                               <button
                                 style={styles.grantBtn}
                                 onClick={() => openGrantForUser(u.username)}
@@ -734,9 +734,9 @@ const styles = {
     color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
   },
   table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
-  th: { padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#aaa4bc", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
+  th: { padding: "10px", fontSize: 12, fontWeight: 700, color: "#aaa4bc", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid rgba(255, 255, 255, 0.05)" },
-  td: { padding: "12px 14px", fontSize: 13, color: "#e2e8f0", verticalAlign: "middle" },
+  td: { padding: "12px 10px", fontSize: 13, color: "#e2e8f0", verticalAlign: "middle" },
   paidRevenueTag: {
     padding: "3px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
     background: "rgba(34, 197, 94, 0.15)", color: "#4ade80", border: "1px solid rgba(74, 222, 128, 0.3)",
