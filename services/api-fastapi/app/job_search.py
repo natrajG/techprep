@@ -323,14 +323,12 @@ def infer_search_defaults(resume: str, jd: str) -> dict[str, Any]:
     merged = _normalize_spaces(f"{resume}\n{jd}")
     country = _infer_country_code(merged) or "in"
     locations = _infer_locations(merged, country)
-    inferred_location = _infer_location(merged)
-    if inferred_location and inferred_location not in locations:
+    if not locations:
         # Known-city matches are more reliable than the free-text preposition
         # regex (which can pick up company names like "at Qvantel"), so only
-        # let the regex match take the primary slot when no city was found.
-        if locations:
-            locations.append(inferred_location)
-        else:
+        # fall back to the regex match when no known city was found at all.
+        inferred_location = _infer_location(merged)
+        if inferred_location:
             locations.insert(0, inferred_location)
     locations = locations[:5]
     return {
