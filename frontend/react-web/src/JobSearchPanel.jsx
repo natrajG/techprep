@@ -138,7 +138,7 @@ function normalizeRoleKey(value) {
 }
 
 function formatSalary(job) {
-  if (job.salary_min == null && job.salary_max == null) return "Not specified";
+  if (job.salary_min == null && job.salary_max == null) return "Not disclosed";
   const min = job.salary_min != null ? Math.round(Number(job.salary_min)).toLocaleString() : null;
   const max = job.salary_max != null ? Math.round(Number(job.salary_max)).toLocaleString() : null;
   const currency = job.currency ? ` ${job.currency}` : "";
@@ -146,34 +146,15 @@ function formatSalary(job) {
   return `${min || max}${currency}`;
 }
 
-function sourceBadgeStyle(source) {
-  const s = (source || "").toLowerCase();
-  if (s.includes("adzuna")) {
-    return {
-      background: "rgba(99, 102, 241, 0.18)",
-      color: "#c7d2fe",
-      border: "1px solid rgba(99, 102, 241, 0.4)",
-    };
-  }
-  if (s.includes("jooble")) {
-    return {
-      background: "rgba(16, 185, 129, 0.18)",
-      color: "#a7f3d0",
-      border: "1px solid rgba(16, 185, 129, 0.4)",
-    };
-  }
-  if (s.includes("usajobs")) {
-    return {
-      background: "rgba(56, 189, 248, 0.18)",
-      color: "#bae6fd",
-      border: "1px solid rgba(56, 189, 248, 0.4)",
-    };
-  }
-  return {
-    background: "rgba(245, 158, 11, 0.18)",
-    color: "#fde68a",
-    border: "1px solid rgba(245, 158, 11, 0.4)",
-  };
+function formatPostedAt(value) {
+  if (value == null) return "";
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+  const elapsed = Math.max(0, Date.now() - timestamp * 1000);
+  const days = Math.floor(elapsed / 86400000);
+  if (days === 0) return "Posted today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
 }
 
 function applyButtonStyle(source) {
@@ -806,55 +787,49 @@ export default function JobSearchPanel({ resume, jd, user }) {
           </div>
           {result.jobs.map((job, index) => (
             <article key={`${job.source}-${job.external_id || job.apply_url}-${index}`} className="tp-job-result">
-              <div className="tp-job-header" style={styles.jobHeader}>
-                <div style={styles.jobLeading}>
-                  <div style={styles.companyAvatar}>
-                    {(job.company || "J").charAt(0).toUpperCase()}
+              <div className="tp-job-main">
+                <input
+                  type="checkbox"
+                  className="tp-job-checkbox"
+                  checked={Boolean(selected[job.apply_url])}
+                  onChange={(e) => toggleSelect(job.apply_url, e.target.checked)}
+                  aria-label={`Select ${job.title}`}
+                />
+                <div className="tp-job-details">
+                  <a href={job.apply_url} target="_blank" rel="noreferrer" className="tp-job-title">
+                    {job.title}
+                  </a>
+                  <div className="tp-job-company">{job.company || "Company Confidential"}</div>
+                  <div className="tp-job-meta">
+                    {job.remote_type && job.remote_type !== "unspecified" &&
+                      !job.location?.toLowerCase().startsWith(job.remote_type.toLowerCase()) && (
+                      <span><Icon name="briefcase" size={16} /> {job.remote_type}</span>
+                    )}
+                    <span><Icon name="wallet" size={16} /> {formatSalary(job)}</span>
+                    {job.location && <span><Icon name="pin" size={16} /> {job.location}</span>}
                   </div>
-                  <div style={styles.jobTitleGroup}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <input
-                        type="checkbox"
-                        style={styles.checkbox}
-                        checked={Boolean(selected[job.apply_url])}
-                        onChange={(e) => toggleSelect(job.apply_url, e.target.checked)}
-                        aria-label={`Select ${job.title}`}
-                      />
-                      <a
-                        href={job.apply_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={styles.jobTitleLink}
-                      >
-                        {job.title}
-                      </a>
-                    </div>
-                    <div style={styles.companySub}>
-                      <span>{job.company || "Company Confidential"}</span>
-                      {job.location && <span> · {job.location}</span>}
-                    </div>
+                  {job.description_snippet && (
+                    <p className="tp-job-snippet">{job.description_snippet}</p>
+                  )}
+                  <div className="tp-job-footer">
+                    <span>{formatPostedAt(job.posted_at)}</span>
+                    <a
+                      className="tp-btn tp-apply-btn"
+                      style={applyButtonStyle(job.source)}
+                      href={job.apply_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Apply on {job.source} ↗
+                    </a>
                   </div>
                 </div>
-                <span style={{ ...styles.sourceBadge, ...sourceBadgeStyle(job.source) }}>
-                  {job.source}
-                </span>
-              </div>
-              <div style={styles.chipsRow}>
-                <span style={job.salary_min != null || job.salary_max != null ? styles.salaryChipActive : styles.chip}>
-                  {formatSalary(job)}
-                </span>
-              </div>
-              {job.description_snippet ? <p style={styles.snippet}>{job.description_snippet}</p> : null}
-              <div style={styles.cardFooter}>
-                <a
-                  className="tp-btn tp-apply-btn"
-                  style={applyButtonStyle(job.source)}
-                  href={job.apply_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Apply on {job.source} ↗
-                </a>
+                <div className="tp-job-identity" aria-label={`Source: ${job.source}`}>
+                  <span className="tp-job-avatar" aria-hidden="true">
+                    {(job.company || job.source || "J").charAt(0).toUpperCase()}
+                  </span>
+                  <span className="tp-job-source">{job.source}</span>
+                </div>
               </div>
             </article>
           ))}
@@ -1069,104 +1044,6 @@ const styles = {
     borderRadius: 999,
     cursor: "pointer",
     fontWeight: 600,
-  },
-  jobLeading: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 12,
-    flex: 1,
-    minWidth: 0,
-  },
-  companyAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(99, 102, 241, 0.2) 100%)",
-    border: "1px solid rgba(56, 189, 248, 0.35)",
-    color: "#b3a3fa",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 800,
-    fontSize: 16,
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  companySub: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 15,
-    color: "#aaa4bc",
-    marginTop: 2,
-  },
-  jobHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-  },
-  jobTitleGroup: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    minWidth: 0,
-    gap: 4,
-    flex: 1,
-  },
-  jobTitleLink: {
-    color: "#f8fafc",
-    fontSize: 17,
-    fontWeight: 700,
-    textDecoration: "none",
-    letterSpacing: "-0.01em",
-  },
-  sourceBadge: {
-    fontSize: 11.5,
-    fontWeight: 700,
-    borderRadius: 999,
-    padding: "3px 9px",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  chipsRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    fontSize: 15,
-    color: "#aaa4bc",
-    background: "rgba(255, 255, 255, 0.04)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    padding: "4px 10px",
-    borderRadius: 6,
-  },
-  salaryChipActive: {
-    fontSize: 15,
-    color: "#86efac",
-    background: "rgba(74, 222, 128, 0.12)",
-    border: "1px solid rgba(74, 222, 128, 0.3)",
-    padding: "4px 10px",
-    borderRadius: 6,
-    fontWeight: 600,
-  },
-  snippet: {
-    margin: 0,
-    fontSize: 15.5,
-    color: "#d3cedf",
-    lineHeight: 1.55,
-    background: "rgba(0, 0, 0, 0.25)",
-    padding: "10px 14px",
-    borderRadius: 8,
-    border: "1px solid rgba(255, 255, 255, 0.05)",
-  },
-  cardFooter: {
-    display: "flex",
-    justifyContent: "flex-end",
-    marginTop: 2,
   },
   emptyState: {
     display: "flex",

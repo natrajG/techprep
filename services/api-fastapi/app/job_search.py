@@ -236,16 +236,14 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _clean_snippet(text: str) -> str:
-    """Strip HTML markup/entities from provider descriptions.
-
-    Jooble (and some Adzuna/USAJOBS payloads) return descriptions with raw
-    HTML such as ``<b>Python</b>&nbsp;developer``. Rendering that as plain
-    text leaks tags and entities into the UI, so strip tags and decode
-    entities before truncating/displaying.
-    """
-    without_tags = _HTML_TAG_RE.sub(" ", text or "")
-    decoded = html.unescape(without_tags)
-    return _normalize_spaces(decoded)
+    """Normalize encoded provider markup, including previously cached snippets."""
+    cleaned = text or ""
+    for _ in range(3):
+        decoded = html.unescape(cleaned)
+        if decoded == cleaned:
+            break
+        cleaned = decoded
+    return _normalize_spaces(_HTML_TAG_RE.sub(" ", cleaned))
 
 
 def _clean_skill(skill: str) -> str:
@@ -678,7 +676,7 @@ def _persist_jobs(
                 job.get("salary_min"),
                 job.get("salary_max"),
                 job.get("currency") or "",
-                job.get("description_snippet") or "",
+                _clean_snippet(job.get("description_snippet") or "")[:500],
                 job["apply_url"],
                 job.get("posted_at"),
                 json.dumps(job.get("raw") or {}),
@@ -732,7 +730,7 @@ def _read_cached_search(conn: sqlite3.Connection, username: str, fingerprint: st
                 "salary_min": row[6],
                 "salary_max": row[7],
                 "currency": row[8],
-                "description_snippet": row[9],
+                "description_snippet": _clean_snippet(row[9]),
                 "apply_url": row[10],
                 "posted_at": row[11],
             }

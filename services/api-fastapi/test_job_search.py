@@ -250,6 +250,38 @@ class JobSearchApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(second_body["cached"])
             self.assertEqual(second_body["count"], 2)
 
+    async def test_encoded_markup_is_cleaned_for_new_and_existing_cached_jobs(self):
+        markup = "&amp;nbsp;...solution &lt;b&gt;engineering,&lt;/b&gt; our people&amp;nbsp;"
+        self.assertEqual(job_search._clean_snippet(markup), "...solution engineering, our people")
+        self.assertEqual(
+            job_search._clean_snippet("&amp;lt;b&amp;gt;Python&amp;lt;/b&amp;gt;"),
+            "Python",
+        )
+        provider = _ProviderOk()
+        original_search = provider.search
+
+        async def search_with_markup(request):
+            result = await original_search(request)
+            result.jobs[0]["description_snippet"] = markup
+            return result
+
+        provider.search = search_with_markup
+        payload = {"role": "backend engineer", "location": "Bengaluru"}
+        with patch("app.job_search._providers", return_value=[provider]):
+            first = await self.client.post("/api/v1/jobs/search", json=payload, headers=self.headers)
+            self.assertEqual(first.status_code, 200)
+            self.assertIn("...solution engineering, our people", [job["description_snippet"] for job in first.json()["jobs"]])
+
+            with users.connect() as conn:
+                conn.execute(
+                    "UPDATE jobs_catalog SET description_snippet = ? WHERE external_id = ?",
+                    (markup, "a1"),
+                )
+            cached = await self.client.post("/api/v1/jobs/search", json=payload, headers=self.headers)
+            self.assertEqual(cached.status_code, 200)
+            self.assertTrue(cached.json()["cached"])
+            self.assertIn("...solution engineering, our people", [job["description_snippet"] for job in cached.json()["jobs"]])
+
     async def test_search_all_providers_down_returns_empty_results_gracefully(self):
         # Upstream outages/rate limits/missing keys should degrade to the same friendly
         # "no jobs matched" empty state as a legitimate zero-result search, not a scary 503.

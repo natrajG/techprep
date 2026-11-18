@@ -137,3 +137,11 @@ No blocking crashes, data loss, or security issues were found. Mobile layout is 
 ## 6. Recommendation
 
 **Deploy the existing local fixes** (items #1–#4) via `scripts/push-to-live.sh` — this is the single action that will resolve the majority of what you reported. Item #5 (anchor scroll) is a minor, separate UX issue that can be scheduled independently.
+
+---
+
+## Follow-up — 2026-11-18
+
+The findings above describe the original QA pass. Those changes were subsequently deployed, but the HTML defect persisted for previously cached descriptions and multiply encoded provider markup. A further local fix now cleans both newly ingested and cached snippets, and the job cards have been redesigned into compact white cards with a short preview, source label, available job metadata, posting date, and a visible Apply action. The provider does not supply ratings, experience ranges, Save, or Hide actions, so these are not shown as if they were real data or working controls.
+
+Preview screenshots: [desktop](evidence/job-search-qa/job-card-preview.png) and [mobile](evidence/job-search-qa/job-card-mobile-preview.png). The user approved this follow-up for deployment on 2026-11-18.

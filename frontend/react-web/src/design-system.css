@@ -299,10 +299,26 @@
 .tp-browser .tp-jobs input:not([type=checkbox]) { width: 100%; min-height: 46px; font-size: 15px; background: var(--tp-input); border-color: var(--tp-border); }
 .tp-browser .tp-jobs label { font-size: 14px; }
 .tp-job-empty { padding: 14px; border: 1px solid var(--tp-border); background: #ffffff03; border-radius: 9px; color: var(--tp-muted); font-size: 15px; }
-.tp-browser .tp-job-result { background: linear-gradient(165deg, #1c1d29 0%, #181923 65%); border: 1px solid var(--tp-border); border-radius: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); padding: 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease; }
-.tp-browser .tp-job-result:hover { border-color: rgba(167, 139, 250, 0.45); box-shadow: 0 10px 28px -8px rgba(99, 102, 241, 0.35); transform: translateY(-2px); }
-.tp-job-result a { overflow-wrap: anywhere; }
-.tp-apply-btn { border: none; font-weight: 700; color: #0b0e14; box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.4); transition: filter 0.15s ease, transform 0.15s ease; }
+.tp-browser .tp-job-result { width: 100%; max-width: 760px; box-sizing: border-box; background: #fff; border: 1px solid #eef0f6; border-radius: 20px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.12); padding: 24px; min-width: 0; color: #17213d; transition: box-shadow 0.18s ease, transform 0.18s ease; }
+.tp-browser .tp-job-result:hover { box-shadow: 0 12px 30px rgba(12, 21, 48, 0.24); transform: translateY(-2px); }
+.tp-job-main { display: flex; align-items: flex-start; gap: 16px; }
+.tp-job-checkbox { width: 18px; height: 18px; flex: 0 0 18px; margin: 3px 0 0; accent-color: #6758d6; cursor: pointer; }
+.tp-job-details { min-width: 0; flex: 1; }
+.tp-job-title { display: inline-block; font-size: 17px; font-weight: 750; line-height: 1.4; color: #101935; text-decoration: none; overflow-wrap: anywhere; }
+.tp-job-title:hover { color: #5643bd; text-decoration: underline; }
+.tp-job-company { font-size: 14px; color: #4b5c89; margin-top: 2px; }
+.tp-job-identity { flex: 0 0 70px; display: flex; align-items: center; flex-direction: column; gap: 7px; }
+.tp-job-avatar { width: 48px; height: 48px; border: 1px solid #dfe5f5; border-radius: 12px; display: grid; place-items: center; color: #4662ac; background: #f4f7ff; font-size: 24px; font-weight: 800; }
+.tp-job-source { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #526398; }
+.tp-job-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 18px; color: #435685; font-size: 14px; }
+.tp-job-meta > span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.tp-job-meta > span + span { border-left: 1px solid #e4e9f2; margin-left: 16px; padding-left: 16px; }
+.tp-job-meta svg { color: #647ab1; flex-shrink: 0; }
+.tp-job-snippet { margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: #475b8d; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.tp-job-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; margin-top: 16px; color: #6a7cae; font-size: 12px; }
+.tp-job-footer > span { white-space: nowrap; }
+.tp-job-footer .tp-apply-btn { min-height: 36px; padding: 7px 12px; font-size: 13px; white-space: nowrap; }
+.tp-browser .tp-apply-btn { border: none; font-weight: 700; color: #0b0e14; box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.4); transition: filter 0.15s ease, transform 0.15s ease; }
 .tp-apply-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
 /* Consistent modal surfaces and readable forms */
@@ -483,7 +499,13 @@
   .tp-dialog .tp-history-toolbar { width: 100%; }
   .tp-admin-user > div { display: none !important; }
   .tp-history-header, .tp-history-item-header { flex-direction: column; align-items: stretch !important; gap: 12px; }
-  .tp-job-header { flex-direction: column; }
+  .tp-browser .tp-job-result { padding: 16px; }
+  .tp-job-main { gap: 10px; }
+  .tp-job-identity { flex-basis: 48px; }
+  .tp-job-avatar { width: 40px; height: 40px; font-size: 19px; }
+  .tp-job-meta { gap: 8px 0; }
+  .tp-job-meta > span + span { margin-left: 10px; padding-left: 10px; }
+  .tp-job-footer { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tp-browser { scroll-behavior: auto; }
