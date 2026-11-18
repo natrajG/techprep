@@ -16,6 +16,9 @@ pricing page and your Billing console; do not assume the deployment is free.
 
 ## 1. Server and network
 
+- Current production: Lightsail instance `techprep-prod-small` in `ap-south-1a`, bundle
+  `small_3_1` (2 GB RAM, 2 vCPUs, 60 GB disk), attached to static IP `techprep-ip`.
+  The deployment script targets this instance by default.
 - Region: closest to your users (e.g. `ap-south-1`). Blueprint: **Ubuntu 24.04**. Plan: 2 GB RAM recommended.
 - Launch script: [`infra/lightsail/launch-script.sh`](../infra/lightsail/launch-script.sh)
   (Docker, Compose, unattended security updates, swap, `/srv/techprep/releases`).

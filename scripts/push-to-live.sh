@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH_KEY="${TECHPREP_SSH_KEY:-$HOME/.ssh/techprep-lightsail}"
-INSTANCE_NAME="${TECHPREP_INSTANCE:-techprep-prod}"
+INSTANCE_NAME="${TECHPREP_INSTANCE:-techprep-prod-small}"
 INSTANCE_IP="${TECHPREP_IP:-13.201.213.33}"
 REMOTE_USER="ubuntu"
 REMOTE_APP_DIR="/srv/techprep/app"
