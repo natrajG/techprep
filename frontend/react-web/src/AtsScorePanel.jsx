@@ -307,6 +307,40 @@ export default function AtsScorePanel({
                       /{rebuilt.overall_max}
                     </span>
                   </div>
+                  {rebuilt.changes?.category_deltas?.length > 0 && (
+                    <>
+                      <h4 style={styles.issuesTitle}>What Changed — Score Breakdown</h4>
+                      <ul style={styles.issuesList}>
+                        {rebuilt.changes.category_deltas.map((d) => (
+                          <li key={d.category}>
+                            {d.label}: {d.before} → {d.after} / {d.max}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {rebuilt.changes?.bullet_diffs?.length > 0 && (
+                    <>
+                      <h4 style={styles.issuesTitle}>What Changed — Rewritten Bullets</h4>
+                      {rebuilt.changes.bullet_diffs.map((d, i) => (
+                        <div key={i} style={{ marginBottom: 8 }}>
+                          <p style={{ ...styles.hint, fontWeight: 700, color: "#e2e8f0" }}>{d.job}</p>
+                          {d.before && (
+                            <p style={{ ...styles.hint, color: "#f87171", margin: "2px 0" }}>− {d.before}</p>
+                          )}
+                          <p style={{ ...styles.hint, color: "#34d399", margin: "2px 0" }}>
+                            {d.type === "added" ? "+ (new) " : "+ "}{d.after}
+                          </p>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {rebuilt.locked && rebuilt.changes?.bullet_diff_count > 0 && (
+                    <p style={{ ...styles.hint, color: "#fbbf24" }}>
+                      🔒 {rebuilt.changes.bullet_diff_count} bullet{rebuilt.changes.bullet_diff_count === 1 ? "" : "s"} were
+                      rewritten — unlock to see the exact before/after text for each one.
+                    </p>
+                  )}
                   <h4 style={styles.issuesTitle}>Rebuilt Summary</h4>
                   <p style={styles.hint}>{rebuilt.preview.summary}</p>
                   {rebuilt.preview.experience?.length > 0 && (

@@ -25,7 +25,7 @@
   scroll-behavior: smooth;
   scroll-padding-top: 100px;
 }
-.tp-browser body { margin: 0; background: var(--tp-bg); color: var(--tp-text); font: 15px/1.6 Inter, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.tp-browser body { margin: 0; background: var(--tp-bg); color: var(--tp-text); font: 16.5px/1.65 Inter, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 .tp-browser *, .tp-browser *::before, .tp-browser *::after { box-sizing: border-box; }
 .tp-browser button, .tp-browser input, .tp-browser textarea, .tp-browser select { font-family: inherit; }
 .tp-browser button, .tp-browser a { -webkit-tap-highlight-color: transparent; }
@@ -50,7 +50,7 @@
 .tp-brand-mark { display: block; width: 36px; height: 36px; flex-shrink: 0; filter: drop-shadow(0 2px 7px rgba(167, 139, 250, .25)); }
 .tp-eyebrow { color: var(--tp-accent); font-size: 11px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
 .tp-dot { width: 6px; height: 6px; background: currentColor; display: inline-block; border-radius: 50%; }
-.tp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 11px 19px; border: 1px solid var(--tp-border); border-radius: 10px; background: #ffffff05; color: var(--tp-text); font-size: 14px; font-weight: 600; text-decoration: none; line-height: 1.4; }
+.tp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 11px 19px; border: 1px solid var(--tp-border); border-radius: 10px; background: #ffffff05; color: var(--tp-text); font-size: 15px; font-weight: 600; text-decoration: none; line-height: 1.4; }
 .tp-btn:hover { background: #ffffff0b; border-color: #747189; }
 .tp-btn-primary { background: var(--tp-primary); border-color: #9985fa; color: white; box-shadow: 0 4px 18px #7862ed20; }
 .tp-btn-primary:hover:not(:disabled) { background: #7860e5; border-color: #b0a0ff; }
@@ -299,8 +299,11 @@
 .tp-browser .tp-jobs input:not([type=checkbox]) { width: 100%; min-height: 46px; font-size: 15px; background: var(--tp-input); border-color: var(--tp-border); }
 .tp-browser .tp-jobs label { font-size: 14px; }
 .tp-job-empty { padding: 14px; border: 1px solid var(--tp-border); background: #ffffff03; border-radius: 9px; color: var(--tp-muted); font-size: 15px; }
-.tp-browser .tp-job-result { background: #181923; border: 1px solid var(--tp-border); border-radius: 12px; box-shadow: none; padding: 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tp-browser .tp-job-result { background: linear-gradient(165deg, #1c1d29 0%, #181923 65%); border: 1px solid var(--tp-border); border-radius: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); padding: 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease; }
+.tp-browser .tp-job-result:hover { border-color: rgba(167, 139, 250, 0.45); box-shadow: 0 10px 28px -8px rgba(99, 102, 241, 0.35); transform: translateY(-2px); }
 .tp-job-result a { overflow-wrap: anywhere; }
+.tp-apply-btn { border: none; font-weight: 700; color: #0b0e14; box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.4); transition: filter 0.15s ease, transform 0.15s ease; }
+.tp-apply-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
 /* Consistent modal surfaces and readable forms */
 .tp-dialog-backdrop { position: fixed; inset: 0; z-index: 11000; display: flex; justify-content: center; align-items: center; padding: 24px; background: #06070bbf; backdrop-filter: blur(7px); font-family: "Segoe UI", system-ui, sans-serif; color: #f3f1f8; }

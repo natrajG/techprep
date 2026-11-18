@@ -12,9 +12,11 @@ are not already present in the resume text, and treats the resume/JD text as unt
 to summarize — not as instructions to follow (same discipline as `prompts.py`).
 """
 
+import difflib
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 
@@ -136,6 +138,9 @@ def _schema(conn: sqlite3.Connection) -> None:
         )"""
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_resume_versions_user ON resume_versions (username, created_at)")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(resume_versions)").fetchall()}
+    if "changes_json" not in cols:
+        conn.execute("ALTER TABLE resume_versions ADD COLUMN changes_json TEXT")
 
 
 users.register_schema(_schema)
@@ -143,6 +148,53 @@ users.register_schema(_schema)
 
 class RebuildError(Exception):
     pass
+
+
+_BULLET_STRIP_RE = re.compile(r"^\s*[-•*▪●○]\s*")
+
+
+def _category_deltas(original_breakdown: dict, rebuilt_breakdown: dict) -> list[dict]:
+    """Per-category before/after score changes, in the same shape/order the UI already shows for
+    a single analysis, so "what changed" directly explains why the overall score moved."""
+    deltas = []
+    for key, rebuilt in rebuilt_breakdown.items():
+        original = original_breakdown.get(key, {"score": 0, "max": rebuilt["max"]})
+        if rebuilt["score"] == original["score"]:
+            continue
+        deltas.append({
+            "category": key,
+            "label": rebuilt.get("label", key),
+            "before": original["score"],
+            "after": rebuilt["score"],
+            "max": rebuilt["max"],
+        })
+    return deltas
+
+
+def _bullet_diffs(original_resume: str, rebuilt_data: dict) -> list[dict]:
+    """Best-effort line-level diff: matches each rewritten bullet against the closest line in the
+    original resume text (by similarity ratio) so the user can see exactly what was reworded vs.
+    newly written, instead of only a before/after score. This is a heuristic (free text has no
+    structure to match 1:1 against), so near-identical bullets are treated as unchanged and
+    dropped rather than reported as a "modification"."""
+    original_lines = [
+        _BULLET_STRIP_RE.sub("", line).strip()
+        for line in original_resume.splitlines()
+        if len(line.strip()) > 8
+    ]
+    diffs: list[dict] = []
+    for job in rebuilt_data.get("experience") or []:
+        job_label = " — ".join(p for p in (job.get("title"), job.get("company")) if p) or "Experience"
+        for bullet in job.get("bullets") or []:
+            match = difflib.get_close_matches(bullet, original_lines, n=1, cutoff=0.45)
+            if not match:
+                diffs.append({"job": job_label, "type": "added", "before": None, "after": bullet})
+                continue
+            ratio = difflib.SequenceMatcher(None, match[0], bullet).ratio()
+            if ratio >= 0.92:
+                continue  # effectively unchanged, not worth reporting
+            diffs.append({"job": job_label, "type": "modified", "before": match[0], "after": bullet})
+    return diffs
 
 
 async def rewrite_resume(
@@ -196,6 +248,10 @@ async def rebuild_and_score(
         raise RebuildError("The rebuilt resume could not be validated as ATS-readable. Please try again.")
 
     rebuilt_result = resume_builder.analyze(reparsed_text, jd)
+    changes = {
+        "category_deltas": _category_deltas(original["breakdown"], rebuilt_result["breakdown"]),
+        "bullet_diffs": _bullet_diffs(resume, data),
+    }
 
     with users.connect() as conn:
         # Rebuilt resumes (and their rendered files) are only ever needed for the 24h paid
@@ -205,7 +261,7 @@ async def rebuild_and_score(
         cur = conn.execute(
             "INSERT INTO resume_versions "
             "(username, analysis_id, rebuilt_json, original_score, rebuilt_score, rebuilt_breakdown, "
-            "pdf_bytes, docx_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "pdf_bytes, docx_bytes, created_at, changes_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 username,
                 analysis_id,
@@ -216,6 +272,7 @@ async def rebuild_and_score(
                 pdf_bytes,
                 docx_bytes,
                 int(time.time()),
+                json.dumps(changes),
             ),
         )
         version_id = cur.lastrowid
@@ -227,6 +284,7 @@ async def rebuild_and_score(
         "overall_max": rebuilt_result["overall_max"],
         "breakdown": rebuilt_result["breakdown"],
         "preview": data,
+        "changes": changes,
         # Still-missing, user-only facts needed to reach resume_builder.TARGET_SCORE; the UI
         # loops back with another rebuild once these are answered, instead of a one-shot rewrite.
         "target_score": resume_builder.TARGET_SCORE,
@@ -240,7 +298,7 @@ async def rebuild_and_score(
 def get_version(version_id: int, username: str) -> dict | None:
     with users.connect() as conn:
         row = conn.execute(
-            "SELECT username, rebuilt_json, original_score, rebuilt_score, rebuilt_breakdown, created_at "
+            "SELECT username, rebuilt_json, original_score, rebuilt_score, rebuilt_breakdown, created_at, changes_json "
             "FROM resume_versions WHERE id = ?",
             (version_id,),
         ).fetchone()
@@ -253,6 +311,7 @@ def get_version(version_id: int, username: str) -> dict | None:
         "rebuilt_score": row[3],
         "breakdown": json.loads(row[4]),
         "created_at": row[5],
+        "changes": json.loads(row[6]) if row[6] else {"category_deltas": [], "bullet_diffs": []},
     }
 
 
@@ -290,6 +349,18 @@ def _teaser(preview: dict) -> dict:
     return out
 
 
+def _teaser_changes(changes: dict) -> dict:
+    """Keeps the deterministic category score deltas visible (that's just numbers, not
+    copy-paste-able rewritten text) but redacts the actual before/after bullet wording down to a
+    count, consistent with how `_teaser` gates the rest of the rewritten content."""
+    bullet_diffs = changes.get("bullet_diffs") or []
+    return {
+        "category_deltas": changes.get("category_deltas") or [],
+        "bullet_diffs": [],
+        "bullet_diff_count": len(bullet_diffs),
+    }
+
+
 def _entitled(username: str) -> bool:
     from .resume_payment import _entitlement_expiry  # local import: resume_payment imports this module
     return _entitlement_expiry(username) is not None
@@ -318,6 +389,7 @@ async def rebuild(req: RebuildRequest, user: str = Depends(require_auth)) -> dic
     locked = not _entitled(user)
     if locked:
         result["preview"] = _teaser(result["preview"])
+        result["changes"] = _teaser_changes(result["changes"])
     result["locked"] = locked
     return result
 
@@ -330,6 +402,7 @@ async def get_rebuild(version_id: int, user: str = Depends(require_auth)) -> dic
     locked = not _entitled(user)
     if locked:
         version["preview"] = _teaser(version["preview"])
+        version["changes"] = _teaser_changes(version["changes"])
     version["locked"] = locked
     return version
 

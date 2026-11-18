@@ -121,6 +121,41 @@ class ResumeRebuildSchemaTests(unittest.IsolatedAsyncioTestCase):
         docx_bytes = resume_rebuild.get_version_file(result["version_id"], "testuser_rebuild", "docx")
         self.assertGreater(len(docx_bytes), 0)
 
+    async def test_rebuild_and_score_includes_changes_summary(self):
+        fake = _fake_client(REBUILT_PAYLOAD)
+        with patch.object(llm, "client", return_value=fake):
+            result = await resume_rebuild.rebuild_and_score("testuser_changes", None, SAMPLE_RESUME, "")
+        self.assertIn("changes", result)
+        self.assertIn("category_deltas", result["changes"])
+        self.assertIn("bullet_diffs", result["changes"])
+        # The sample resume's bullet was substantially reworded/expanded, so it should surface in
+        # the diff (either as "modified" against the closest original line, or "added" if the
+        # rewrite diverged too far to match confidently — either way, not silently dropped).
+        self.assertTrue(result["changes"]["bullet_diffs"])
+        stored = resume_rebuild.get_version(result["version_id"], "testuser_changes")
+        self.assertEqual(stored["changes"], result["changes"])
+
+    def test_category_deltas_only_reports_changed_categories(self):
+        original = {"contact": {"label": "Contact information", "score": 2, "max": 5},
+                    "education": {"label": "Education and certifications", "score": 10, "max": 10}}
+        rebuilt = {"contact": {"label": "Contact information", "score": 5, "max": 5},
+                   "education": {"label": "Education and certifications", "score": 10, "max": 10}}
+        deltas = resume_rebuild._category_deltas(original, rebuilt)
+        self.assertEqual(len(deltas), 1)
+        self.assertEqual(deltas[0]["category"], "contact")
+        self.assertEqual(deltas[0]["before"], 2)
+        self.assertEqual(deltas[0]["after"], 5)
+
+    def test_bullet_diffs_flags_new_content_as_added(self):
+        diffs = resume_rebuild._bullet_diffs(
+            "Experience\nBackend Engineer, Acme Corp\n- Worked on backend services",
+            {"experience": [{"title": "Backend Engineer", "company": "Acme Corp",
+                              "bullets": ["Completely unrelated brand new achievement text here"]}]},
+        )
+        self.assertEqual(len(diffs), 1)
+        self.assertEqual(diffs[0]["type"], "added")
+        self.assertIsNone(diffs[0]["before"])
+
     async def test_other_user_cannot_read_a_version(self):
         fake = _fake_client(REBUILT_PAYLOAD)
         with patch.object(llm, "client", return_value=fake):
@@ -189,6 +224,10 @@ class ResumeRebuildApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(body["preview"]["experience"][0]["bullets"]), 1)
         self.assertEqual(body["target_score"], resume_rebuild.resume_builder.TARGET_SCORE)
         self.assertIsInstance(body["facts_needed"], list)
+        # Score deltas (just numbers) stay visible, but bullet-level before/after text is
+        # redacted to a count until paid, same gating as the rest of the rewritten content.
+        self.assertEqual(body["changes"]["bullet_diffs"], [])
+        self.assertIn("bullet_diff_count", body["changes"])
 
         get_res = await self.client.get(
             f"/api/v1/resume-builder/rebuild/{body['version_id']}", headers=self.headers,

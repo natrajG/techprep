@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import html
 import json
 import os
 import re
@@ -96,6 +97,36 @@ _CANONICAL_CITY_CASE = {
     "san diego": "San Diego",
     "the hague": "The Hague",
     "abu dhabi": "Abu Dhabi",
+}
+
+# Words/phrases that must NOT be treated as a location even though they can
+# follow a preposition like "in"/"at" in resume text (e.g. "expertise in
+# Python", "experience in Agile"). Without this guard, _infer_location()
+# would misread skill/tool/process names as city names.
+_LOCATION_FALSE_POSITIVES = {skill.lower() for skill in _COMMON_SKILLS} | {
+    "agile", "scrum", "waterfall", "linux", "windows", "macos",
+    "ci", "cd", "cicd", "devops", "cloud", "production", "staging",
+    "github", "gitlab", "bitbucket", "jira", "confluence", "jenkins",
+    "sql", "html", "css", "api", "apis", "microservices", "backend",
+    "frontend", "fullstack", "oop", "tdd", "bdd",
+}
+
+
+def _alias_pattern(alias: str) -> re.Pattern[str]:
+    """Build a substring-safe matcher for a country alias.
+
+    Uses lookaround on non-alphanumeric boundaries (rather than ``\\b``) so
+    aliases containing punctuation (e.g. "u.s.") still match correctly, while
+    aliases like "usa" no longer match inside unrelated words such as
+    "usage".
+    """
+    escaped = re.escape(alias)
+    return re.compile(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])")
+
+
+_COUNTRY_ALIAS_PATTERNS = {
+    code: [_alias_pattern(alias) for alias in aliases]
+    for code, aliases in _COUNTRY_ALIASES.items()
 }
 
 
@@ -201,6 +232,22 @@ def _normalize_spaces(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean_snippet(text: str) -> str:
+    """Strip HTML markup/entities from provider descriptions.
+
+    Jooble (and some Adzuna/USAJOBS payloads) return descriptions with raw
+    HTML such as ``<b>Python</b>&nbsp;developer``. Rendering that as plain
+    text leaks tags and entities into the UI, so strip tags and decode
+    entities before truncating/displaying.
+    """
+    without_tags = _HTML_TAG_RE.sub(" ", text or "")
+    decoded = html.unescape(without_tags)
+    return _normalize_spaces(decoded)
+
+
 def _clean_skill(skill: str) -> str:
     value = _normalize_spaces(skill).lower()
     return re.sub(r"[^a-z0-9+#.\- ]", "", value)[:40].strip()
@@ -226,9 +273,10 @@ def _infer_role(text: str) -> str:
 
 
 def _infer_location(text: str) -> str:
-    match = _LOCATION_RE.search(text or "")
-    if match:
-        return _normalize_spaces(match.group(1))
+    for match in _LOCATION_RE.finditer(text or ""):
+        candidate = _normalize_spaces(match.group(1))
+        if candidate.lower() not in _LOCATION_FALSE_POSITIVES:
+            return candidate
     return ""
 
 
@@ -243,10 +291,10 @@ def _pretty_city_name(raw_city: str) -> str:
 
 def _infer_country_code(text: str) -> str:
     lowered = (text or "").lower()
-    for code, aliases in _COUNTRY_ALIASES.items():
-        if any(alias in lowered for alias in aliases):
+    for code, patterns in _COUNTRY_ALIAS_PATTERNS.items():
+        if any(pattern.search(lowered) for pattern in patterns):
             return code
-    if "+91" in lowered or " india " in f" {lowered} ":
+    if re.search(r"\+91\b", lowered) or re.search(r"(?<![a-z0-9])india(?![a-z0-9])", lowered):
         return "in"
     return ""
 
@@ -277,7 +325,13 @@ def infer_search_defaults(resume: str, jd: str) -> dict[str, Any]:
     locations = _infer_locations(merged, country)
     inferred_location = _infer_location(merged)
     if inferred_location and inferred_location not in locations:
-        locations.insert(0, inferred_location)
+        # Known-city matches are more reliable than the free-text preposition
+        # regex (which can pick up company names like "at Qvantel"), so only
+        # let the regex match take the primary slot when no city was found.
+        if locations:
+            locations.append(inferred_location)
+        else:
+            locations.insert(0, inferred_location)
     locations = locations[:5]
     return {
         "role": _infer_role(merged),
@@ -372,7 +426,7 @@ class AdzunaProvider(BaseProvider):
                 "salary_min": item.get("salary_min"),
                 "salary_max": item.get("salary_max"),
                 "currency": item.get("salary_currency") or "",
-                "description_snippet": _normalize_spaces(item.get("description", ""))[:500],
+                "description_snippet": _clean_snippet(item.get("description", ""))[:500],
                 "apply_url": apply_url,
                 "posted_at": _safe_int_timestamp(item.get("created")),
                 "raw": item,
@@ -427,7 +481,7 @@ class JoobleProvider(BaseProvider):
                 "salary_min": None,
                 "salary_max": None,
                 "currency": "",
-                "description_snippet": _normalize_spaces(item.get("snippet", ""))[:500],
+                "description_snippet": _clean_snippet(item.get("snippet", ""))[:500],
                 "apply_url": apply_url,
                 "posted_at": _safe_int_timestamp(item.get("updated")),
                 "raw": item,
@@ -486,7 +540,7 @@ class UsajobsProvider(BaseProvider):
                 "salary_min": remuneration.get("MinimumRange"),
                 "salary_max": remuneration.get("MaximumRange"),
                 "currency": remuneration.get("RateIntervalCode") or "",
-                "description_snippet": _normalize_spaces(item.get("UserArea", {}).get("Details", {}).get("MajorDuties", ""))[:500],
+                "description_snippet": _clean_snippet(item.get("UserArea", {}).get("Details", {}).get("MajorDuties", ""))[:500],
                 "apply_url": apply_uri,
                 "posted_at": posted_at,
                 "raw": item,

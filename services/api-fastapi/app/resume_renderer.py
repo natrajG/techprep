@@ -16,13 +16,24 @@ from weasyprint import HTML
 
 _CSS = """
 @page { size: A4; margin: 1.6cm; }
-body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 10.5pt; line-height: 1.35; }
+/* font-kerning/ligatures disabled: Pango/Cairo kerning pairs for capital T before a lowercase
+   vowel (Te, Ty, ...) emit a large glyph-positioning adjustment in the PDF content stream. That
+   adjustment is visually invisible but wide enough that many text extractors (including the
+   reparse_pdf_text() ATS re-check below, and real-world ATS parsers) read it as a word space,
+   e.g. "Telecom" -> "T elecom". Disabling kerning/ligatures keeps the extracted text exact. */
+body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 10.5pt; line-height: 1.35;
+       font-kerning: none; font-variant-ligatures: none; }
 h1 { font-size: 16pt; margin: 0 0 2pt; }
 .contact { font-size: 9.5pt; color: #333; margin-bottom: 10pt; }
 h2 { font-size: 11.5pt; text-transform: uppercase; letter-spacing: 0.5pt;
      border-bottom: 1pt solid #333; margin: 12pt 0 4pt; padding-bottom: 2pt; }
 .entry-title { font-weight: bold; }
-.entry-meta { float: right; font-style: italic; color: #444; }
+/* entry-row uses flex, not float: right. Floated boxes are pulled out of normal flow and get
+   written to the PDF content stream out of visual order (we observed dates being extracted
+   before the candidate's own name), which corrupts the reading order a real ATS parser relies
+   on. Flex keeps the title and date in the same line box, in source order. */
+.entry-row { display: flex; justify-content: space-between; align-items: baseline; margin: 2pt 0; }
+.entry-meta { font-style: italic; color: #444; white-space: nowrap; padding-left: 8pt; }
 ul { margin: 2pt 0 6pt; padding-left: 14pt; }
 li { margin-bottom: 2pt; }
 p { margin: 2pt 0; }
@@ -48,8 +59,8 @@ def render_html(data: dict) -> str:
         parts.append("<h2>Experience</h2>")
         for job in data["experience"]:
             parts.append(
-                f"<p><span class='entry-title'>{_esc(job.get('title', ''))} — {_esc(job.get('company', ''))}</span>"
-                f"<span class='entry-meta'>{_esc(job.get('dates', ''))}</span></p>"
+                f"<div class='entry-row'><span class='entry-title'>{_esc(job.get('title', ''))} — {_esc(job.get('company', ''))}</span>"
+                f"<span class='entry-meta'>{_esc(job.get('dates', ''))}</span></div>"
             )
             bullets = job.get("bullets") or []
             if bullets:
@@ -59,8 +70,8 @@ def render_html(data: dict) -> str:
         parts.append("<h2>Education</h2>")
         for edu in data["education"]:
             parts.append(
-                f"<p><span class='entry-title'>{_esc(edu.get('degree', ''))}, {_esc(edu.get('institution', ''))}</span>"
-                f"<span class='entry-meta'>{_esc(edu.get('dates', ''))}</span></p>"
+                f"<div class='entry-row'><span class='entry-title'>{_esc(edu.get('degree', ''))}, {_esc(edu.get('institution', ''))}</span>"
+                f"<span class='entry-meta'>{_esc(edu.get('dates', ''))}</span></div>"
             )
 
     if data.get("certifications"):

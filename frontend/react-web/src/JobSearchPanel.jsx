@@ -176,6 +176,20 @@ function sourceBadgeStyle(source) {
   };
 }
 
+function applyButtonStyle(source) {
+  const s = (source || "").toLowerCase();
+  if (s.includes("adzuna")) {
+    return { background: "linear-gradient(135deg, #818cf8, #6366f1)" };
+  }
+  if (s.includes("jooble")) {
+    return { background: "linear-gradient(135deg, #34d399, #10b981)" };
+  }
+  if (s.includes("usajobs")) {
+    return { background: "linear-gradient(135deg, #7dd3fc, #38bdf8)" };
+  }
+  return { background: "linear-gradient(135deg, #fbbf24, #f59e0b)" };
+}
+
 function statusDotColor(status) {
   const s = (status || "").toLowerCase();
   if (s === "ok" || s === "success") return "#4ade80";
@@ -832,7 +846,13 @@ export default function JobSearchPanel({ resume, jd, user }) {
               </div>
               {job.description_snippet ? <p style={styles.snippet}>{job.description_snippet}</p> : null}
               <div style={styles.cardFooter}>
-                <a className="tp-btn" href={job.apply_url} target="_blank" rel="noreferrer">
+                <a
+                  className="tp-btn tp-apply-btn"
+                  style={applyButtonStyle(job.source)}
+                  href={job.apply_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Apply on {job.source} ↗
                 </a>
               </div>
@@ -1006,7 +1026,7 @@ const styles = {
     display: "inline-flex",
     gap: 8,
     alignItems: "center",
-    fontSize: 14,
+    fontSize: 15,
     color: "#e2e8f0",
     fontWeight: 600,
     cursor: "pointer",
@@ -1077,7 +1097,7 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
-    fontSize: 14,
+    fontSize: 15,
     color: "#aaa4bc",
     marginTop: 2,
   },
@@ -1098,7 +1118,7 @@ const styles = {
   },
   jobTitleLink: {
     color: "#f8fafc",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 700,
     textDecoration: "none",
     letterSpacing: "-0.01em",
@@ -1117,7 +1137,7 @@ const styles = {
     gap: 8,
   },
   chip: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#aaa4bc",
     background: "rgba(255, 255, 255, 0.04)",
     border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -1125,7 +1145,7 @@ const styles = {
     borderRadius: 6,
   },
   salaryChipActive: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#86efac",
     background: "rgba(74, 222, 128, 0.12)",
     border: "1px solid rgba(74, 222, 128, 0.3)",
@@ -1135,9 +1155,9 @@ const styles = {
   },
   snippet: {
     margin: 0,
-    fontSize: 15,
+    fontSize: 15.5,
     color: "#d3cedf",
-    lineHeight: 1.5,
+    lineHeight: 1.55,
     background: "rgba(0, 0, 0, 0.25)",
     padding: "10px 14px",
     borderRadius: 8,
