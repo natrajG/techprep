@@ -42,6 +42,9 @@ test("landing leads with the interview HUD and highlights the complete career to
   assert.match(html, /ATS Resume Builder/);
   assert.match(html, /Mock Interviews/);
   assert.match(html, /Resume-Based Job Search/);
+  assert.match(html, /Trusted by <strong>1 Lakh\+ people<\/strong>/);
+  assert.match(html, /4\.2\/5/);
+  assert.match(html, /from 10K\+ reviews/);
   assert.match(html, /aria-label="HUD preview mode"/);
   assert.match(html, /Protection varies by OS and sharing method/);
   assert.doesNotMatch(html, /undetectable/);

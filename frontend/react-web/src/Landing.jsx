@@ -92,6 +92,11 @@ export default function Landing({ onSignIn, onSignUp, storeUrl }) {
               <button className="tp-btn" onClick={() => setShowDemo(true)}><Icon name="play" size={15} /> Explore the demo</button>
             </div>
             <span className="tp-hero-note"><Icon name="check" size={14} /> Free ATS scoring <span aria-hidden="true">·</span> Windows &amp; macOS <span aria-hidden="true">·</span> Your complete career toolkit</span>
+            <div className="tp-trust-strip" aria-label="Community ratings">
+              <div className="tp-trust-people"><span className="tp-trust-icon"><Icon name="check" size={18} /></span><span>Trusted by <strong>1 Lakh+ people</strong></span></div>
+              <span className="tp-trust-divider" aria-hidden="true" />
+              <div className="tp-trust-rating"><span className="tp-trust-stars" aria-label="4.2 out of 5 stars">★★★★★</span><strong>4.2/5</strong><span>from 10K+ reviews</span></div>
+            </div>
 
             <div className="tp-hud-stage" id="interview-hud" role="region" aria-label="Illustrative preview of the interview workspace">
               <div className="tp-stage-toolbar">

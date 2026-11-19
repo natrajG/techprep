@@ -93,6 +93,12 @@
 .tp-spotlight-actions .tp-btn { min-height: 48px; padding-inline: 24px; }
 .tp-spotlight-actions .tp-btn-primary { box-shadow: 0 0 28px #9870f526, inset 0 1px 0 #ffffff22; }
 .tp-spotlight .tp-hero-note { justify-content: center; flex-wrap: wrap; margin-top: 14px; font-size: 13px; }
+.tp-trust-strip { display: flex; align-items: center; justify-content: center; gap: 24px; width: fit-content; max-width: 100%; margin: 30px auto 0; padding: 14px 22px; border: 1px solid #aa91dc42; border-radius: 16px; background: linear-gradient(110deg, #261e38d9, #171924e6); box-shadow: 0 16px 42px #0005, inset 0 1px 0 #ffffff16; color: #cec6da; font-size: 13px; }
+.tp-trust-people, .tp-trust-rating { display: flex; align-items: center; gap: 9px; }
+.tp-trust-strip strong { color: #f5efff; font-size: 16px; font-weight: 700; }
+.tp-trust-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #a994ed24; color: #c4b1fb; }
+.tp-trust-divider { width: 1px; align-self: stretch; background: #bca8d94d; }
+.tp-trust-stars { background: linear-gradient(90deg, #efbd73 84%, #65556d 84%); background-clip: text; -webkit-text-fill-color: transparent; font-size: 19px; line-height: 1; letter-spacing: 1px; white-space: nowrap; }
 .tp-hero-orbit { position: absolute; display: flex; gap: 10px; align-items: center; border: 1px solid #b69ce528; background: linear-gradient(135deg, #282336b3, #18172299); border-radius: 14px; padding: 15px; color: #baa3f2; font-size: 10px; text-align: left; box-shadow: 0 12px 28px #0002; }
 .tp-hero-orbit span { color: #aba2bb; }
 .tp-hero-orbit strong { color: #e0d4f5; font-weight: 500; }
@@ -259,10 +265,21 @@
 .tp-live-plan-prompt strong { color: #f7e4b4; font-size: 15px; font-weight: 600; }
 .tp-live-plan-prompt > span { color: var(--tp-muted); font-size: 14px; }
 .tp-live-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
-.tp-workflow-nav { display: flex; gap: 8px; padding: 6px; background: #13141c; border: 1px solid var(--tp-border); border-radius: 12px; margin: 0 0 30px; }
-.tp-workflow-nav a, .tp-workflow-nav button { display: flex; align-items: center; justify-content: center; gap: 9px; flex: 1; min-height: 46px; font-size: 13px; color: #b7b4c8; background: transparent; border: 1px solid transparent; border-radius: 8px; text-decoration: none; white-space: nowrap; }
-.tp-workflow-nav a:first-child { color: #d4cbff; background: #a99cff0d; border-color: #a99cff22; }
-.tp-workflow-nav a:hover, .tp-workflow-nav button:hover { background: #ffffff07; color: #fff; }
+.tp-workflow-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 30px; }
+.tp-workflow-nav a, .tp-workflow-nav button { display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 86px; padding: 14px; border: 1px solid #6d51a057; border-radius: 16px; background: linear-gradient(125deg, #281f3b, #191723); box-shadow: 0 10px 24px #0003, inset 0 1px 0 #ffffff12; color: #f0e8ff; font-size: 14px; font-weight: 650; text-align: left; text-decoration: none; }
+.tp-workflow-nav a:hover, .tp-workflow-nav button:hover { border-color: #ac87e2; background: linear-gradient(125deg, #35284d, #211d30); box-shadow: 0 16px 30px #0005; }
+.tp-workflow-nav .tp-workflow-icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; background: #b89af125; color: #d3b9fb; }
+.tp-workflow-nav a > span:nth-child(2), .tp-workflow-nav button > span:nth-child(2) { flex: 1; }
+.tp-workflow-nav a > svg, .tp-workflow-nav button > svg { color: #c9b0f3; }
+.tp-workflow-nav :is(a, button):nth-child(2) { border-color: #529d8870; background: linear-gradient(125deg, #1d3836, #182423); color: #def8eb; }
+.tp-workflow-nav :is(a, button):nth-child(2):hover { border-color: #7bcdb1; background: linear-gradient(125deg, #254a45, #1d302d); }
+.tp-workflow-nav :is(a, button):nth-child(2) .tp-workflow-icon { background: #79c5ab26; color: #a1e2c7; }
+.tp-workflow-nav :is(a, button):nth-child(3) { border-color: #a46b8b70; background: linear-gradient(125deg, #382632, #241b27); color: #ffe6f4; }
+.tp-workflow-nav :is(a, button):nth-child(3):hover { border-color: #df9cbe; background: linear-gradient(125deg, #4a3041, #2e2232); }
+.tp-workflow-nav :is(a, button):nth-child(3) .tp-workflow-icon { background: #d898b827; color: #f0b5d3; }
+.tp-workflow-nav :is(a, button):nth-child(4) { border-color: #627cb570; background: linear-gradient(125deg, #23324b, #191e2d); color: #e6edff; }
+.tp-workflow-nav :is(a, button):nth-child(4):hover { border-color: #99b4ec; background: linear-gradient(125deg, #304264, #21283c); }
+.tp-workflow-nav :is(a, button):nth-child(4) .tp-workflow-icon { background: #94adf12a; color: #b1c6fc; }
 .tp-content-grid { display: grid; gap: 24px; }
 .tp-panel { border: 1px solid var(--tp-border); border-radius: var(--tp-radius); background: var(--tp-surface); box-shadow: var(--tp-shadow); padding: 28px; min-width: 0; }
 .tp-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -419,8 +436,8 @@
   .tp-price-card:last-child { grid-column: 1 / -1; }
   .tp-workspace { padding: 28px 20px 70px; }
   .tp-workspace-nav { padding-inline: 20px; height: 68px; }
-  .tp-workflow-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-  .tp-workflow-nav a, .tp-workflow-nav button { padding: 8px; font-size: 12px; white-space: normal; min-height: 48px; text-align: center; }
+  .tp-workflow-nav { grid-template-columns: 1fr 1fr; }
+  .tp-workflow-nav a, .tp-workflow-nav button { padding: 12px; font-size: 13px; }
   .tp-panel, .tp-browser .tp-jobs { padding: 22px; }
   .tp-resume-grid, .tp-secondary-grid { grid-template-columns: 1fr; gap: 22px; }
   .tp-welcome-orbit { width: 64px; height: 64px; }
@@ -440,6 +457,9 @@
   .tp-capture-note { font-size: 12px; align-items: start; }
   .tp-capture-note svg { margin-top: 2px; }
   .tp-spotlight .tp-hero-note { font-size: 12px; gap: 5px; }
+  .tp-trust-strip { flex-wrap: wrap; gap: 9px 16px; padding: 14px 18px; margin-top: 24px; justify-content: start; }
+  .tp-trust-divider { display: none; }
+  .tp-trust-people, .tp-trust-rating { width: 100%; }
   .tp-stage-toolbar { padding: 13px; gap: 8px; }
   .tp-stage-toolbar .tp-pill { font-size: 9px; padding: 4px 6px; }
   .tp-stage-body { padding: 12px; gap: 12px; }

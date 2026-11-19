@@ -224,10 +224,10 @@ export default function WebDashboard({
           </div>
         </section>
         <nav className="tp-workflow-nav" aria-label="Quick actions">
-          <a href="#ats-builder"><Icon name="file" size={17} /> ATS Resume Builder</a>
-          <a href="#job-search"><Icon name="search" size={17} /> Find jobs</a>
-          <button onClick={() => setShowMockInterview(true)}><Icon name="mic" size={17} /> Mock interview</button>
-          <a href="#desktop-app"><Icon name="desktop" size={17} /> Desktop app</a>
+          <a href="#ats-builder"><span className="tp-workflow-icon"><Icon name="file" size={21} /></span><span>ATS Resume Builder</span><Icon name="arrow" size={17} /></a>
+          <a href="#job-search"><span className="tp-workflow-icon"><Icon name="search" size={21} /></span><span>Find jobs</span><Icon name="arrow" size={17} /></a>
+          <button onClick={() => setShowMockInterview(true)}><span className="tp-workflow-icon"><Icon name="mic" size={21} /></span><span>Mock interview</span><Icon name="arrow" size={17} /></button>
+          <a href="#desktop-app"><span className="tp-workflow-icon"><Icon name="desktop" size={21} /></span><span>Desktop app</span><Icon name="arrow" size={17} /></a>
         </nav>
 
         <div className="tp-content-grid">
