@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ResumeUploadButton from "./ResumeUploadButton";
+import { hoverTitle } from "./hover-title.mjs";
 
 const DISMISS_KEY = "profileOnboardingDismissed";
 
@@ -32,7 +33,7 @@ export default function ProfileOnboarding({ resume, setResume, jd, setJd, onClos
       <div style={styles.modal} onClick={(event) => event.stopPropagation()}>
         <div style={styles.header}>
           <h3 style={styles.title}>Add your resume &amp; job description</h3>
-          <button style={styles.closeBtn} onClick={dismiss} title="Close">✕</button>
+          <button style={styles.closeBtn} onClick={dismiss} aria-label="Close" title={hoverTitle("Close")}>✕</button>
         </div>
         <div style={styles.body}>
           <p style={{ color: "#cbd5e1", margin: 0, fontSize: 13 }}>

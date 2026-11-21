@@ -41,6 +41,42 @@ class AnswerClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('event: question\ndata: ""', response.text)
         self.assertIn("event: done", response.text)
 
+    async def test_named_acknowledgements_and_logistics_skip_generation_and_history(self):
+        phrases = [
+            "Natraj, thanks.", "Thanks Natraj", "OK", "Yeah, Natraj, please.",
+            "Okay, thanks, Natraj Gudimalla.", "Start the system",
+            "Start the system and join again.", "Please rejoin the call again.",
+            "Join again.",
+        ]
+        for phrase in phrases:
+            with self.subTest(phrase=phrase), \
+                 patch("app.llm.complete", AsyncMock(side_effect=AssertionError("classifier should be skipped"))), \
+                 patch("app.llm.stream_chat", AsyncMock(side_effect=AssertionError("stream should be skipped"))), \
+                 patch("app.history.save_interview_qa") as saver:
+                response = await self._answer("natraj.gudimalla2", {"transcript": phrase})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('event: classification\ndata: "IGNORE"', response.text)
+                self.assertIn('event: question\ndata: ""', response.text)
+                saver.assert_not_called()
+
+    async def test_thanks_followed_by_a_real_question_is_not_discarded(self):
+        async def fake_stream(_system, _question, _history, on_usage=None):
+            yield "- Middleware processes requests and responses."
+
+        for phrase in [
+            "Thanks Natraj, explain Django middleware.",
+            "Thank you for your time. Explain Django middleware.",
+            "Can you share your screen? Explain Django middleware.",
+            "Okay, Redis clustering",
+            "Start the system design by explaining the database schema.",
+        ]:
+            with self.subTest(phrase=phrase), \
+                 patch("app.llm.complete", AsyncMock(return_value=_classifier("ANSWER", phrase))) as classifier, \
+                 patch("app.llm.stream_chat", fake_stream):
+                response = await self._answer("natraj.gudimalla2", {"transcript": phrase})
+                self.assertIn("Middleware processes", response.text)
+                classifier.assert_awaited_once()
+
     async def test_screen_share_prompt_is_ignored_without_llm_call(self):
         with patch("app.llm.complete", AsyncMock(side_effect=AssertionError("classifier should be skipped"))), \
              patch("app.llm.stream_chat", AsyncMock(side_effect=AssertionError("stream should be skipped"))):
@@ -181,12 +217,39 @@ class AnswerClassificationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_answer_sentinel_is_not_saved(self):
         async def fake_stream(_system, _question, _history, on_usage=None):
-            yield "NO_ANSWER"
+            yield "NO_"
+            yield "ANSWER"
 
         with patch("app.llm.complete", AsyncMock(return_value=_classifier("ANSWER", "What is Redis?", 0.99))), \
              patch("app.llm.stream_chat", fake_stream), \
              patch("app.history.save_interview_qa") as saver:
             response = await self._answer("u13", {"transcript": "What is Redis?"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("NO_ANSWER", response.text)
+        self.assertNotIn("NO_ANSWER", response.text)
+        self.assertNotIn("What is Redis?", response.text)
+        self.assertIn('event: classification\ndata: "IGNORE"', response.text)
+        self.assertIn('event: question\ndata: ""', response.text)
         saver.assert_not_called()
+
+    async def test_normal_answer_with_sentinel_prefix_still_streams(self):
+        async def fake_stream(_system, _question, _history, on_usage=None):
+            yield "N"
+            yield "o, use a queue."
+
+        with patch("app.llm.stream_chat", fake_stream):
+            response = await self._answer("u14", {"question": "Should the job block the request?"})
+        self.assertIn('data: "No, use a queue."', response.text)
+        self.assertEqual(response.text.count("event: question"), 1)
+
+    async def test_answer_prompt_requires_points_without_changing_code_rules(self):
+        async def fake_stream(system, _question, _history, on_usage=None):
+            self.assertIn("answer ONLY in concise '-' bullet points", system)
+            self.assertIn("usually 2-4 points", system)
+            self.assertIn("within 60 words by default", system)
+            self.assertIn("without extra explanation, examples, or background unless explicitly requested", system)
+            self.assertIn("return only a working code block unless explanation is requested", system)
+            yield "- A concise answer."
+
+        with patch("app.llm.stream_chat", fake_stream):
+            response = await self._answer("u15", {"question": "What is a queue?"})
+        self.assertIn("A concise answer.", response.text)

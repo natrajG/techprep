@@ -101,6 +101,7 @@ NO_ANSWER_SENTINEL = "NO_ANSWER"
 _FILLER_WORDS = {
     "okay", "ok", "thanks", "thank", "you", "yes", "yeah", "yep", "right",
     "sure", "fine", "alright", "understood", "understand", "got", "it", "cool", "hmm", "uh", "um",
+    "no", "mm", "please", "sir",
 }
 _IGNORE_PATTERNS = (
     r"\b(can you|could you)\s+share your screen\b",
@@ -108,6 +109,11 @@ _IGNORE_PATTERNS = (
     r"\bhave i joined early\b",
     r"\bthank you for your time\b",
     r"\bit was nice meeting you\b",
+)
+_LOGISTICS_PATTERNS = (
+    r"(?:please )?(?:start|restart) (?:the |your )?(?:system|computer)"
+    r"(?: and (?:rejoin|join again))?(?: please)?",
+    r"(?:please )?(?:rejoin(?: the (?:call|meeting))?(?: again)?|join again|join the (?:call|meeting) again)(?: please)?",
 )
 _WAIT_SUFFIX = re.compile(r"\b(and|or|with|without|using|where|that|which|if|when|while|to)\s*$", re.IGNORECASE)
 _recent_answer_events: dict[tuple[str, str, str], tuple[float, str]] = {}
@@ -162,17 +168,22 @@ def _recent_transcript_window(transcript: str, history: list["AnswerTurn"]) -> s
     return window or normalized[-QUESTION_EXTRACT_MAX_CHARS:]
 
 
-def _deterministic_classification(transcript: str) -> QuestionExtractionResult | None:
+def _deterministic_classification(transcript: str, candidate: str = "") -> QuestionExtractionResult | None:
     normalized = _normalize_spaces(transcript)
     if not normalized:
         return QuestionExtractionResult(decision="WAIT", question="", confidence=0.95)
     lowered = normalized.lower().strip(" .!?")
     words = [w for w in re.sub(r"[^a-z\s]", " ", lowered).split() if w]
-    if words and len(words) <= 4 and all(word in _FILLER_WORDS for word in words):
+    names = set(re.findall(r"[a-z]+", candidate.lower().split("@")[0]))
+    if any(word in _FILLER_WORDS for word in words) and all(
+        word in _FILLER_WORDS or word in names for word in words
+    ):
         return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
     if lowered in {"i understand", "okay fine", "ok fine", "thank you", "thanks"}:
         return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
-    if any(re.search(pattern, lowered) for pattern in _IGNORE_PATTERNS):
+    if any(re.fullmatch(pattern, lowered) for pattern in _IGNORE_PATTERNS):
+        return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
+    if any(re.fullmatch(pattern, lowered) for pattern in _LOGISTICS_PATTERNS):
         return QuestionExtractionResult(decision="IGNORE", question="", confidence=0.99)
     if normalized.endswith("...") or _WAIT_SUFFIX.search(normalized):
         return QuestionExtractionResult(decision="WAIT", question="", confidence=0.9)
@@ -617,7 +628,7 @@ async def answer(
             extraction = QuestionExtractionResult(decision="WAIT", question="", confidence=1.0)
             classifier = "empty"
         else:
-            rule_result = _deterministic_classification(transcript_window)
+            rule_result = _deterministic_classification(transcript_window, user)
             if rule_result is not None:
                 extraction = rule_result
                 classifier = "rule"
@@ -677,19 +688,33 @@ async def answer(
     ]
 
     async def events():
-        yield f"event: question\ndata: {json.dumps(question)}\n\n"
+        yield f"event: classification\ndata: {json.dumps(extraction.decision)}\n\n"
         if extraction.decision != "ANSWER":
+            yield 'event: question\ndata: ""\n\n'
             await record_usage.flush()
             yield "event: done\ndata: \"\"\n\n"
             return
         full_tokens: list[str] = []
         stream_failed = False
+        question_sent = False
+        prefix = ""
         try:
             async for token in llm.stream_chat(system, question, history, on_usage=record_usage):
                 full_tokens.append(token)
-                yield f"data: {json.dumps(token)}\n\n"
+                if not question_sent:
+                    prefix += token
+                    # Hold only the potential sentinel prefix, not a normal streaming answer.
+                    if NO_ANSWER_SENTINEL.startswith(prefix.strip()):
+                        continue
+                    yield f"event: question\ndata: {json.dumps(question)}\n\n"
+                    question_sent = True
+                    yield f"data: {json.dumps(prefix)}\n\n"
+                else:
+                    yield f"data: {json.dumps(token)}\n\n"
         except Exception as e:  # surface provider errors (quota, auth, network) in the UI
             stream_failed = True
+            if not question_sent:
+                yield f"event: question\ndata: {json.dumps(question)}\n\n"
             if settings.production():
                 logger.exception("LLM provider request failed")
                 text = "[The assistant is temporarily unavailable. Please try again.]"
@@ -700,6 +725,14 @@ async def answer(
         await record_usage.flush()
         answered_text = "".join(full_tokens).strip()
         is_saveable_answer = bool(answered_text and answered_text != NO_ANSWER_SENTINEL)
+        if not stream_failed and not question_sent:
+            if is_saveable_answer:
+                yield f"event: question\ndata: {json.dumps(question)}\n\n"
+                yield f"data: {json.dumps(prefix)}\n\n"
+            else:
+                logger.info("answer.skipped_empty_or_no_answer user=%s", user)
+                yield 'event: classification\ndata: "IGNORE"\n\n'
+                yield 'event: question\ndata: ""\n\n'
         if not stream_failed and question and is_saveable_answer:
             try:
                 await run_in_threadpool(history_module.save_interview_qa, user, question, answered_text)

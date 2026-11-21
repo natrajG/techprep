@@ -57,7 +57,7 @@ for (const [name, environment, supported, mechanism] of [
   });
 }
 
-test("overlay forces arrow cursor after page load", async () => {
+test("overlay forces arrow cursor for all elements and reapplies it after navigation", async () => {
   const protection = createCaptureProtection(windows);
 
   const overlay = createOverlayWindow({
@@ -75,6 +75,10 @@ test("overlay forces arrow cursor after page load", async () => {
       overlay.window.insertedCSS,
       /cursor:\s*default\s*!important/
     );
+    assert.match(overlay.window.insertedCSS, /\*,\s*\*::before,\s*\*::after/);
+    overlay.window.insertedCSS = "";
+    overlay.window.webContents.emit("did-finish-load");
+    assert.match(overlay.window.insertedCSS, /cursor:\s*default\s*!important/);
   } finally {
     // Cancel the renderer restoration timeout even if the assertion fails.
     overlay.window.emit("closed");

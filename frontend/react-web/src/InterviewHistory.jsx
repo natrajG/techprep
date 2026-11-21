@@ -3,6 +3,7 @@ import { fetchInterviewHistory, deleteInterviewHistoryItem, clearInterviewHistor
 import { splitBold } from "./rich-text.mjs";
 import Dialog from "./Dialog";
 import Icon from "./Icon";
+import { hoverTitle } from "./hover-title.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
@@ -95,7 +96,7 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {!loading && total > 0 && (
-            <button style={styles.clearBtn} onClick={() => setPendingAction({ type: "clear" })} title="Clear all saved questions">
+            <button style={styles.clearBtn} onClick={() => setPendingAction({ type: "clear" })} title={hoverTitle("Clear all saved questions")}>
               Clear all
             </button>
           )}
@@ -184,7 +185,7 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
                     <button
                       style={styles.copyBtn}
                       onClick={(e) => copyQA(item, e)}
-                      title="Copy Question & Answer"
+                      title={hoverTitle("Copy Question & Answer")}
                     >
                       {copiedId === item.id ? "✓ Copied" : "📋 Copy"}
                     </button>
@@ -195,7 +196,7 @@ export default function InterviewHistory({ onClose = null, inModal = false }) {
                         setPendingAction({ type: "delete", id: item.id, question: item.question });
                       }}
                       aria-label={`Delete ${item.question}`}
-                      title="Delete this question"
+                      title={hoverTitle("Delete this question")}
                     >
                       ✕
                     </button>

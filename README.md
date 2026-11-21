@@ -106,8 +106,20 @@ Roles: **Lead Python Developer** and **Python Full Stack Developer**.
 4. Click **Listen to meeting tab**, choose the meeting tab, and tick **Share tab audio**.
    Audio is transcribed in standalone chunks; a short speech pause finishes the current chunk.
 5. After a short pause in speech, TechPrep automatically answers the newly transcribed question.
-   You can still click **Answer** (or press Enter) to answer manually or type a question.
+   Once listening starts, the toolbar and transcript strip collapse into the answer card,
+   giving answers more room. **Stop** remains visible; **Show controls** restores the toolbar,
+   transcript, history, and settings without stopping capture. Stopping restores the normal layout.
+   The question field and **Answer** button stay above the independently scrolling answers.
+   The desktop HUD uses translucent black panels and neutral controls, without a logo;
+   recording and warning indicators retain their status colors.
+   Click **Answer** (or press Enter) to submit a typed question or captured speech.
    It picks out the latest interviewer question and streams back an answer.
+   Non-code answers display as bullets, not numbers: usually 2-4 short points within 60 words,
+   without extra explanation unless explicitly requested.
+   Acknowledgements (including known account-name parts, such as "Alex, thanks"), meeting
+   logistics, and incomplete questions do not replace the answer currently on screen.
+   The API classifies captured speech before generating an answer; typed questions still use
+   the manual Answer flow. Names are matched from the account username, not guessed from technical words.
    Programming requests return just the code by default; ask "explain it" afterward for a concise explanation.
    The overlay keeps the last two Q&A turns in memory for follow-ups, without persisting them or resending the full conversation.
 
@@ -116,8 +128,9 @@ Roles: **Lead Python Developer** and **Python Full Stack Developer**.
    microphone or fall back to it if system capture fails. Electron starts a display capture for
    loopback audio but does not upload video. The app warns when no shared audio is detected,
    and transcription receives technical vocabulary hints, including Django. The desktop overlay
-   is hidden from the Windows taskbar (the sign-in window remains visible there); the cursor
-   disappears immediately over the overlay and reappears when it leaves.
+   is hidden from the Windows taskbar (the sign-in window remains visible there). The pointer
+   stays a normal arrow over overlay controls, including popup buttons; hover-name tooltips
+   are suppressed in the desktop HUD and its dialogs without removing accessible labels.
 
 API: `POST /api/v1/transcribe` (multipart `audio`), `POST /api/v1/answer` (SSE stream), `POST /api/v1/evaluate` (practice scoring).
 The monthly plan defaults to 30 one-hour calls within 30 days. A call window begins on the first

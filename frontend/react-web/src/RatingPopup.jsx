@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { submitRating } from "./ratings.mjs";
+import { hoverTitle } from "./hover-title.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
@@ -39,7 +40,7 @@ export default function RatingPopup({ context, onClose, onSubmitted }) {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(event) => event.stopPropagation()}>
-        <button style={styles.closeBtn} onClick={onClose} title="Close">✕</button>
+        <button style={styles.closeBtn} onClick={onClose} aria-label="Close" title={hoverTitle("Close")}>✕</button>
         {sent ? (
           <div style={styles.body}>
             <p style={{ fontSize: 28, margin: "0 0 10px" }}>🙌</p>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fetchDownload, saveDownload } from "./downloads.mjs";
+import { hoverTitle } from "./hover-title.mjs";
 
 const API = import.meta.env.VITE_API_URL || "";
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
@@ -64,7 +65,7 @@ export default function DesktopDownload({ localNetwork = true, storeUrl = null }
         <div className="hud-row dd-platform-row">
           <span className="dd-icon" aria-hidden="true"></span>
           <strong>TechPrep for Mac</strong>
-          <span className="dd-badge dd-badge--free" title="Free build: not yet code-signed or Apple-notarized">
+          <span className="dd-badge dd-badge--free" title={hoverTitle("Free build: not yet code-signed or Apple-notarized")}>
             Free build
           </span>
           <button className="dd-btn" onClick={() => download("mac")} disabled={!!pending}>

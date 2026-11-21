@@ -6,6 +6,7 @@ import ResumeUploadButton from "./ResumeUploadButton";
 import AtsScorePanel from "./AtsScorePanel";
 import { splitBold } from "./rich-text.mjs";
 import { MIN_HUD_OPACITY } from "./hud-opacity.mjs";
+import { hoverTitle } from "./hover-title.mjs";
 
 export default function UserProfileModal({
   user,
@@ -62,7 +63,7 @@ export default function UserProfileModal({
               <p style={styles.userSubtext}>TechPrep Stealth Intelligence Member</p>
             </div>
           </div>
-          <button style={styles.closeBtn} onClick={onClose} title="Close Profile">✕</button>
+          <button style={styles.closeBtn} onClick={onClose} aria-label="Close Profile" title={hoverTitle("Close Profile", desktop)}>✕</button>
         </div>
 
         {/* Tab Navigation */}

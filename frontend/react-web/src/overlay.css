@@ -1,10 +1,10 @@
 :root { color-scheme: dark; }
-body { background: #080a11; }
+body { background: #0b0b0b; }
 
 .hud {
   --hud-opacity: 0.92;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #f8fafc;
+  color: #f5f5f5;
   box-sizing: border-box;
   min-height: 100vh;
   padding: 12px;
@@ -17,14 +17,14 @@ body { background: #080a11; }
   height: 100vh;
   overflow: hidden;
 }
-/* Only the answer card may shrink and scroll, so the control bar never leaves the window. */
+/* Only the answer card may shrink; its inner answer list scrolls independently. */
 .hud-desktop > * { flex-shrink: 0; }
 .hud-desktop > .hud-qa { flex: 1 1 0; min-height: 0; }
 .hud-desktop .hud-menu { max-height: 45vh; overflow-y: auto; }
 /* Opacity fades only the card background; text stays solid and gets a soft shadow for bright backdrops. */
 .hud { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
 .hud-bar, .hud-card {
-  --hud-bg: linear-gradient(145deg, rgba(24, 29, 46, var(--hud-opacity)), rgba(11, 13, 23, var(--hud-opacity)));
+  --hud-bg: rgba(12, 12, 12, var(--hud-opacity));
 }
 
 .hud-bar {
@@ -33,14 +33,14 @@ body { background: #080a11; }
   background: var(--hud-bg);
   border: 1px solid rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(16px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .hud-drag { -webkit-app-region: drag; user-select: none; }
 .hud-drag button, .hud-drag input, .hud-drag label { -webkit-app-region: no-drag; }
 .hud-spacer { flex: 1; }
 
 .hud button, .hud a.hud-pill {
-  font: inherit; font-size: 13px; font-weight: 600; color: #f8fafc; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: #f5f5f5; cursor: pointer;
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px; padding: 6px 14px;
   display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
@@ -48,25 +48,25 @@ body { background: #080a11; }
 }
 .hud button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(165, 180, 252, 0.4);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
 }
 .hud a.hud-pill:hover {
   background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(165, 180, 252, 0.4);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 .hud button:disabled { opacity: 0.55; cursor: default; }
 .hud .hud-icon { padding: 4px 10px; font-size: 16px; line-height: 1; }
-.hud .hud-end { background: #ff3b4e; border-color: #ff3b4e; }
+.hud .hud-end { background: #ff3b4e; border-color: #ff3b4e; color: #ffffff; }
 .hud .hud-end:hover:not(:disabled) { background: #ff5566; }
-.hud .hud-listen.on { background: #7a1d27; border-color: #ff3b4e80; }
+.hud .hud-listen.on { background: rgba(244, 63, 94, 0.12); border-color: rgba(251, 113, 133, 0.3); color: #fecdd3; }
 .hud kbd {
-  font: inherit; font-size: 11px; font-weight: 500; color: #c9c9d1;
+  font: inherit; font-size: 11px; font-weight: 500; color: #cccccc;
   background: #ffffff14; border-radius: 6px; padding: 0 5px;
 }
 
-.hud-dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a93; }
-.hud-dot.live { background: #ff3b4e; box-shadow: 0 0 6px #ff3b4e; animation: hud-pulse 1.2s infinite; }
+.hud-dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a8a; }
+.hud-dot.live { background: #6ee7b7; box-shadow: 0 0 10px rgba(52, 211, 153, 0.55); animation: hud-pulse 1.8s infinite; }
 @keyframes hud-pulse { 50% { opacity: 0.4; } }
 
 .hud-chips { min-height: 34px; }
@@ -76,57 +76,74 @@ body { background: #080a11; }
   font-size: 13px; padding: 3px 11px; border-radius: 999px;
   background: #ffffff14; border: 1px solid #ffffff1f;
 }
-.hud-muted { color: #b0b0b9; font-size: 12.5px; }
-.hud-status { margin: 8px 0 0; }
+.hud-muted { color: #b5b5b5; font-size: 12.5px; }
+.hud-status { margin: 0; line-height: 1.5; }
 
 .hud-card {
   border-radius: 16px; padding: 14px 16px;
   background: var(--hud-bg);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(16px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
-.hud-qa { flex: 1; overflow-y: auto; overscroll-behavior: contain; position: relative; }
+.hud-qa { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-color: rgba(255, 255, 255, 0.14); }
+.hud-answer-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; overflow-wrap: anywhere; padding: 2px; }
+.hud-focus-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.hud-focus-label { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: #dddddd; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 5px 9px; }
+.hud-focus-label .hud-dot { width: 6px; height: 6px; }
+.hud-focus-actions { display: flex; align-items: center; gap: 7px; }
+.hud .hud-focus-actions button { font-size: 12px; padding: 6px 11px; }
+.hud-question-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; padding: 6px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 13px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025); }
+.hud-question-form input { flex: 1 1 180px; min-width: 0; }
+.hud-question-form button { flex-shrink: 0; }
+.hud .hud-answer-btn { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); padding: 10px 16px; border-radius: 999px; }
+.hud .hud-answer-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
+.hud-qa > .hud-focus-controls, .hud-qa > .hud-question-form, .hud-qa > .hud-session-footer { flex-shrink: 0; }
+.hud-session-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.hud-session-footer .hud-status { font-size: 11px; color: #aaaaaa; }
+.hud .hud-session-end { font-size: 11px; padding: 5px 9px; white-space: nowrap; color: #bbbbbb; border-color: transparent; background: transparent; }
 .hud-qa-pair {
   margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.2s ease;
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .hud-qa-pair--archived {
   opacity: 0.95;
-  border-left: 3px solid #818cf8;
+  border-left: 2px solid rgba(255, 255, 255, 0.25);
 }
 .hud-qa-pair--live {
-  border-left: 3px solid #10b981;
-  background: rgba(16, 185, 129, 0.04);
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 .hud-qa-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .hud-qa-badge {
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 6px;
-  background: rgba(129, 140, 248, 0.2);
-  color: #c7d2fe;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dddddd;
+  letter-spacing: 0.04em;
 }
 .hud-qa-badge--live {
-  background: rgba(16, 185, 129, 0.25);
-  color: #6ee7b7;
+  background: rgba(255, 255, 255, 0.1);
+  color: #eeeeee;
 }
+.hud-answer-state { font-size: 11px; color: #bbbbbb; }
 .hud-qa-time {
   font-size: 11px;
-  color: #94a3b8;
+  color: #aaaaaa;
 }
-.hud-scroll-down-btn {
+.hud .hud-scroll-down-btn {
   position: sticky;
   bottom: 8px;
   left: 50%;
@@ -135,7 +152,7 @@ body { background: #080a11; }
   display: flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #4f46e5, #06b6d4);
+  background: #303030;
   color: #ffffff;
   border: 0;
   padding: 6px 14px;
@@ -149,24 +166,29 @@ body { background: #080a11; }
 .hud-scroll-down-btn:hover {
   filter: brightness(1.15);
 }
-.hud-q { margin: 6px 0 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); line-height: 1.45; }
-.hud-q b, .hud-a > b { color: #c7d2fe; letter-spacing: 0.02em; }
+.hud-q { margin: 0 0 18px; padding-bottom: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); line-height: 1.5; font-size: 20px; font-weight: 600; letter-spacing: -0.35px; }
 .hud-a { line-height: 1.6; }
-.hud-a pre {
-  white-space: pre-wrap; font-family: inherit; font-size: 15.5px; margin: 8px 0 0;
-  background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.07);
-  border-left: 3px solid #818cf8;
-  padding: 12px 14px; border-radius: 10px;
-}
+.hud-answer-label { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #cccccc; margin-bottom: 12px; }
+.hud-answer-body { color: #dddddd; font-size: 15.5px; }
+.hud-answer-points { list-style: disc; padding-left: 22px; margin: 0; }
+.hud-answer-points li { padding: 6px 0 6px 4px; white-space: pre-wrap; }
+.hud-answer-points li::marker { color: #dddddd; }
+.hud-answer-body strong { color: #f5f5f5; font-weight: 650; }
+.hud-answer-paragraph { white-space: pre-wrap; margin: 10px 0; }
+.hud-code-block { margin: 12px 0; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(0, 0, 0, 0.35); overflow: hidden; }
+.hud-code-language { display: block; padding: 7px 14px; font-size: 11px; color: #cccccc; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.hud-code-block pre { margin: 0; padding: 14px; white-space: pre-wrap; tab-size: 4; font: 13px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.hud-empty { padding: 8px 0; color: #b5b5b5; font-size: 13px; line-height: 1.6; }
+.hud-empty p { margin: 0; }
 
 /* Slim dark scrollbars that match the overlay instead of the default light Windows ones. */
-.hud-qa, .hud-menu, .hud textarea { scrollbar-width: thin; scrollbar-color: rgba(129, 140, 248, 0.55) transparent; }
-.hud-qa::-webkit-scrollbar, .hud-menu::-webkit-scrollbar, .hud textarea::-webkit-scrollbar { width: 8px; }
-.hud-qa::-webkit-scrollbar-track, .hud-menu::-webkit-scrollbar-track, .hud textarea::-webkit-scrollbar-track { background: transparent; }
-.hud-qa::-webkit-scrollbar-thumb, .hud-menu::-webkit-scrollbar-thumb, .hud textarea::-webkit-scrollbar-thumb {
-  background: rgba(129, 140, 248, 0.45); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
+.hud-answer-scroll, .hud-menu, .hud textarea { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
+.hud-answer-scroll::-webkit-scrollbar, .hud-menu::-webkit-scrollbar, .hud textarea::-webkit-scrollbar { width: 8px; }
+.hud-answer-scroll::-webkit-scrollbar-track, .hud-menu::-webkit-scrollbar-track, .hud textarea::-webkit-scrollbar-track { background: transparent; }
+.hud-answer-scroll::-webkit-scrollbar-thumb, .hud-menu::-webkit-scrollbar-thumb, .hud textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
 }
-.hud-qa::-webkit-scrollbar-thumb:hover, .hud-menu::-webkit-scrollbar-thumb:hover { background: rgba(165, 180, 252, 0.75); background-clip: padding-box; }
+.hud-answer-scroll::-webkit-scrollbar-thumb:hover, .hud-menu::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.5); background-clip: padding-box; }
 
 .hud-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; margin: 6px 0; }
 .hud-row input[type="range"] { width: 120px; }
@@ -174,14 +196,33 @@ body { background: #080a11; }
 .hud-menu section { margin: 8px 0; font-size: 12px; }
 
 .hud input:not([type="checkbox"]):not([type="range"]), .hud textarea {
-  font: inherit; font-size: 14px; color: #f8fafc; background: rgba(255, 255, 255, 0.06);
+  font: inherit; font-size: 14px; color: #f5f5f5; background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 10px; padding: 10px 12px;
   width: 100%; box-sizing: border-box;
 }
 .hud textarea { margin-top: 6px; resize: vertical; }
-.hud input::placeholder, .hud textarea::placeholder { color: #94a3b8; }
+.hud input::placeholder, .hud textarea::placeholder { color: #aaaaaa; }
+.hud .hud-question-form input { background: transparent; border-color: transparent; padding: 10px; }
 .hud [role="alert"] { color: #f87171; }
-.hud :focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+.hud :focus-visible { outline: 2px solid #cccccc; outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .hud-focus-controls { gap: 10px; }
+  .hud-focus-actions { width: 100%; justify-content: flex-end; }
+  .hud-card.hud-qa { padding: 12px; }
+  .hud-qa-pair { padding: 16px; }
+  .hud-q { font-size: 17px; }
+  .hud-answer-body { font-size: 14px; }
+  .hud-question-form { gap: 6px; }
+  .hud-question-form input { flex-basis: 140px; }
+  .hud .hud-answer-btn { padding: 10px 12px; }
+  .hud-answer-btn kbd { display: none; }
+  .hud-session-footer { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-dot.live { animation: none; }
+  .hud button { transition: none; }
+}
 
 /* Luxury Renewal & Subscription Banner */
 .hud-sub-expired {
@@ -228,7 +269,7 @@ body { background: #080a11; }
 }
 .hud-profile-pill:hover {
   background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(99, 102, 241, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 .hud-profile-dot {
   width: 7px;
@@ -240,8 +281,8 @@ body { background: #080a11; }
   font-size: 10px !important;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.25);
-  color: #a5b4fc;
+  background: rgba(255, 255, 255, 0.12);
+  color: #dddddd;
   font-weight: 700;
   text-transform: uppercase;
 }

@@ -6,7 +6,10 @@ import DesktopDownload from "./DesktopDownload";
 import { authFetch } from "./auth.mjs";
 import { transcribeAudio } from "./transcription.mjs";
 import { startChunkRecorder, captureSystemAudio } from "./audio-capture.mjs";
-import { splitBold } from "./rich-text.mjs";
+import AnswerContent from "./AnswerContent";
+import Icon from "./Icon";
+import { isAcknowledgement } from "./speech-filter.mjs";
+import { hoverTitle } from "./hover-title.mjs";
 import { clampHudOpacity, MIN_HUD_OPACITY } from "./hud-opacity.mjs";
 import { fetchSubscriptionStatus, lowCallWarning, timeRemainingWarning, sendHeartbeat } from "./subscriptions.mjs";
 import SubscriptionPricing from "./SubscriptionPricing";
@@ -24,12 +27,6 @@ const load = (k, d = "") => localStorage.getItem(k) ?? d;
 const desktop = window.desktop; // exposed by the Electron preload script
 // On Linux the desktop app records its default input, which it routes to the PulseAudio monitor (system audio).
 const useDeviceInput = desktop?.platform === "linux";
-
-// Short acknowledgements that shouldn't trigger an auto-answer on their own (e.g. a stray "Thank you.").
-const FILLER_WORDS = new Set([
-  "thanks", "thank", "you", "ok", "okay", "yes", "no", "yeah", "yep",
-  "sure", "alright", "cool", "right", "got", "it", "mm", "uh", "um", "hmm",
-]);
 
 // Whisper-family STT models fabricate these stock phrases (from their training captions) when fed
 // near-silent/background-noise audio with no real speech. Nobody said them — drop them outright so
@@ -101,6 +98,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const [capturePending, setCapturePending] = useState(true);
   const [captureError, setCaptureError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [controlsExpanded, setControlsExpanded] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratingPopup, setRatingPopup] = useState(null); // null | "trial" | "paid"
   const [showProfileOnboarding, setShowProfileOnboarding] = useState(() => shouldShowProfileOnboarding());
@@ -334,11 +332,6 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     }
   }
 
-  function isFillerOnly(text) {
-    const words = text.toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
-    return words.length > 0 && words.every((word) => FILLER_WORDS.has(word));
-  }
-
   function tryAutoAnswer() {
     const pending = autoAnswerPendingRef.current;
     if (!pending || busyRef.current) return;
@@ -355,8 +348,11 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     autoAnswerPendingRef.current = null;
     if (!newSpeech) return;
     lastAnsweredRef.current = fullTranscript;
-    if (isFillerOnly(newSpeech)) return;
-    setStatus("Answering after the speech pause…");
+    if (isAcknowledgement(newSpeech, currentUser)) {
+      setStatus("Acknowledgement ignored. Waiting for an interview question.");
+      return;
+    }
+    setStatus("Checking for a complete interview question…");
     getAnswer(newSpeech);
   }
 
@@ -447,6 +443,8 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         return;
       }
       setListening(true);
+      setControlsExpanded(false);
+      setMenuOpen(false);
       setStatus("Listening…");
     } catch (e) {
       system?.getTracks().forEach((track) => track.stop());
@@ -502,11 +500,16 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
     }
     busyRef.current = true;
     setBusy(true);
-    // Archive the previous Q&A pair so it stays visible (scrolled above the new one).
-    // Kept throughout the session so past questions and answers are never erased mid-interview.
-    setQaLog((log) => (question && answer ? [...log, { question, answer, timestamp: Date.now() }] : log));
-    setAnswer("");
-    setQuestion("");
+    let answerStarted = false;
+    function beginAnswer(nextQuestion) {
+      if (answerStarted) return;
+      answerStarted = true;
+      // Ignored speech must not archive or clear the answer the user is still reading.
+      setQaLog((log) => (question && answer ? [...log, { question, answer, timestamp: Date.now() }] : log));
+      setQuestion(nextQuestion);
+      setAnswer("");
+      setStatus("Preparing your answer…");
+    }
     try {
       const r = await authFetch(`${API}/api/v1/answer`, {
         method: "POST",
@@ -541,12 +544,18 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           const val = JSON.parse(data);
           if (evName === "question") {
             answeredQuestion = val;
-            setQuestion(val);
+            if (val) beginAnswer(val);
+          } else if (evName === "classification") {
+            if (val === "IGNORE") setStatus("Non-question ignored. Waiting for an interview question.");
+            if (val === "WAIT") setStatus("Waiting for a complete interview question.");
           } else if (evName === "done") completed = true;
           else if (evName === "error") {
             failed = true;
+            beginAnswer(answeredQuestion || requestedQuestion);
             setAnswer((a) => a + val);
+            setStatus("The answer could not be completed.");
           } else if (!evName) {
+            beginAnswer(answeredQuestion || requestedQuestion);
             answeredText += val;
             setAnswer((a) => a + val);
           }
@@ -557,9 +566,12 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           question: answeredQuestion.slice(0, 500),
           answer: answeredText.slice(0, 4000),
         }].slice(-2);
+        setStatus("Answer ready.");
       }
       if (autoTranscript === null) setManualQ("");
     } catch (e) {
+      beginAnswer(requestedQuestion);
+      setStatus("The answer could not be completed.");
       if (e.message && (e.message.includes("402") || e.message.toLowerCase().includes("subscription"))) {
         setSubExpired(true);
         setAnswer("⚠️ Subscription expired or call allowance used. Please renew access to continue.");
@@ -595,22 +607,20 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       : !desktop
         ? "The browser requires a screen/tab picker: choose the meeting tab and enable tab audio."
         : "Captures the configured audio source for transcription.";
-  const hoverTitle = (text) => (desktop ? undefined : text);
+  const answerFocused = listening && !controlsExpanded;
 
   const panel = (
     <main className={`hud${desktop ? " hud-desktop" : ""}`} style={{ "--hud-opacity": opacity }}>
+      {!answerFocused && (
       <div className={`hud-bar${desktop ? " hud-drag" : ""}`}>
         <button className={`hud-pill hud-listen${listening ? " on" : ""}`} onClick={listening || captureStarting ? stopListening : startListening}
           title={hoverTitle(listening ? "Stop listening" : captureStarting ? "Cancel capture setup" : "Listen to meeting tab")}>
           <span className={`hud-dot${listening ? " live" : ""}`} />
           {listening ? "Stop" : captureStarting ? "Cancel" : "Listen"}
         </button>
-        <button className="hud-pill" disabled={busy} onClick={() => getAnswer()} title={hoverTitle("Get answer (Enter)")}>
-          {busy ? "Thinking…" : "Answer"} <kbd>↵</kbd>
-        </button>
         <button className="hud-pill" onClick={clearTranscript} title={hoverTitle("Clear transcript")}>Clear</button>
         <button className="hud-pill" onClick={() => setShowHistoryModal(true)} title={hoverTitle("Interview Question History & Prep")}>
-          📚 History
+          <Icon name="history" size={16} /> History
         </button>
         <span className="hud-spacer" />
         <button
@@ -622,14 +632,18 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           <span>{currentUser || "Profile"}</span>
           <span className="hud-plan-tag">{subscription ? subscription.plan_name.split(" ")[0] : "Free"}</span>
         </button>
-        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} title={hoverTitle("Quick Settings")} aria-expanded={menuOpen}>⋮</button>
+        <button className="hud-icon" onClick={() => setMenuOpen((v) => !v)} aria-label="Quick Settings" title={hoverTitle("Quick Settings")} aria-expanded={menuOpen}>⋮</button>
+        {listening && (
+          <button onClick={() => { setControlsExpanded(false); setMenuOpen(false); }}>Hide controls</button>
+        )}
         {desktop ? (
           <>
-            <button className="hud-icon" onClick={() => desktop.minimize()} title={hoverTitle("Minimize")}>–</button>
+            <button className="hud-icon" onClick={() => desktop.minimize()} aria-label="Minimize" title={hoverTitle("Minimize")}>–</button>
             <button className="hud-pill hud-end" onClick={() => desktop.close()} title={hoverTitle("Close")}>End</button>
           </>
         ) : null}
       </div>
+      )}
 
       {!desktop && (
         <section className="hud-card" style={{ borderColor: "rgba(245, 158, 11, 0.4)", background: "rgba(245, 158, 11, 0.08)" }}>
@@ -725,18 +739,18 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         />
       )}
 
-      <div className="hud-bar hud-chips">
+      {!answerFocused && <div className="hud-bar hud-chips">
         <span className={`hud-eq${listening ? " live" : ""}`} aria-hidden>▮▮▮</span>
         {chips.length
           ? chips.map((c, i) => <span key={i} className="hud-chip">{c}</span>)
           : <span className="hud-muted">{status || "Live transcript will appear here…"}</span>}
-      </div>
+      </div>}
 
-      {menuOpen && (
+      {menuOpen && !answerFocused && (
         <section className="hud-card hud-menu">
           <p className="hud-muted" style={{ marginTop: 0 }}>{sourceHint}</p>
           {useDeviceInput && (
-            <p className="hud-muted" title="Set by the desktop app. Restart it after changing your output device.">
+            <p className="hud-muted" title={hoverTitle("Set by the desktop app. Restart it after changing your output device.")}>
               Audio source: {/\.monitor$/.test(desktop.audioSource) ? "🔊 system audio" : "unavailable"} ({desktop.audioSource})
             </p>
           )}
@@ -782,63 +796,68 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         />
       )}
 
-      <section className="hud-card hud-qa" ref={answerScrollRef} onScroll={trackAnswerScroll}>
-        <div className="hud-row" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+      <section className="hud-card hud-qa">
+        {answerFocused && (
+          <div className={`hud-focus-controls${desktop ? " hud-drag" : ""}`}>
+            <span className="hud-focus-label"><span className="hud-dot live" /> Listening</span>
+            <span className="hud-spacer" />
+            <div className="hud-focus-actions">
+              <button className="hud-listen on" onClick={stopListening}>Stop</button>
+              <button onClick={() => setControlsExpanded(true)} aria-expanded={false}><Icon name="settings" size={15} /> Show controls</button>
+              {desktop && (
+                <>
+                  <button className="hud-icon" onClick={() => desktop.minimize()} aria-label="Minimize">–</button>
+                  <button className="hud-end" onClick={() => desktop.close()}>End</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <form className="hud-question-form" onSubmit={(event) => { event.preventDefault(); getAnswer(); }}>
           <input
-            style={{ flex: 1 }}
-            placeholder="Optional: type question or auto-detected from meeting audio…"
+            aria-label="Question"
+            placeholder="Type a question, or let meeting audio ask it…"
             value={manualQ}
             onChange={(e) => setManualQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !busy && getAnswer()}
           />
-          {manualQ && (
-            <button className="hud-pill" onClick={() => getAnswer()} disabled={busy}>
-              Ask
-            </button>
-          )}
-          {(qaLog.length > 0 || question || answer) && (
-            <button
-              className="hud-pill hud-pill--subtle"
-              onClick={handleEndSession}
-              title={hoverTitle("Clear desktop session. Saved questions remain in your history.")}
-              style={{ fontSize: 11, padding: "4px 8px", color: "#fca5a5", whiteSpace: "nowrap" }}
-            >
-              🔄 End Session ({qaLog.length + (question || answer ? 1 : 0)})
-            </button>
-          )}
-        </div>
+          <button type="submit" className="hud-pill hud-answer-btn" disabled={busy || (!manualQ.trim() && !transcript.trim())}>
+            {busy ? "Thinking…" : "Answer"} <kbd>↵</kbd>
+          </button>
+        </form>
 
+        <div className="hud-answer-scroll" ref={answerScrollRef} onScroll={trackAnswerScroll}>
         {/* All prior questions and answers kept throughout this session (scrollable) */}
         {qaLog.map((pair, i) => (
           <div key={i} className="hud-qa-pair hud-qa-pair--archived">
             <div className="hud-qa-header">
-              <span className="hud-qa-badge">Q{i + 1}</span>
+              <span className="hud-qa-badge">Question {String(i + 1).padStart(2, "0")}</span>
               {pair.timestamp && (
                 <span className="hud-qa-time">
                   {new Date(pair.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
             </div>
-            <p className="hud-q"><b>💬 Question:</b> {pair.question}</p>
+            <p className="hud-q">{pair.question}</p>
             <div className="hud-a">
-              <b>⭐ Answer:</b>
-              <pre>{splitBold(pair.answer).map((part, j) => part.bold ? <strong key={j}>{part.text}</strong> : part.text)}</pre>
+              <div className="hud-answer-label">Answer</div>
+              <AnswerContent text={pair.answer} />
             </div>
           </div>
         ))}
 
         {/* Current in-progress or latest question */}
-        {(question || answer || busy) && (
+        {(question || answer) && (
           <div className="hud-qa-pair hud-qa-pair--live">
             <div className="hud-qa-header">
-              <span className="hud-qa-badge hud-qa-badge--live">Q{qaLog.length + 1} · Live</span>
+              <span className="hud-qa-badge hud-qa-badge--live">Question {String(qaLog.length + 1).padStart(2, "0")}</span>
+              <span className="hud-answer-state">{busy ? "Working…" : "Latest answer"}</span>
             </div>
-            {question && <p className="hud-q"><b>💬 Question:</b> {question}</p>}
+            {question && <p className="hud-q">{question}</p>}
             {(answer || busy) && (
               <div className="hud-a">
-                <b>⭐ Answer:</b>
+                <div className="hud-answer-label">Answer</div>
                 {answer ? (
-                  <pre>{splitBold(answer).map((part, i) => part.bold ? <strong key={i}>{part.text}</strong> : part.text)}</pre>
+                  <AnswerContent text={answer} />
                 ) : (
                   <p className="hud-muted">Thinking and preparing your answer…</p>
                 )}
@@ -847,12 +866,11 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
           </div>
         )}
 
-        {!qaLog.length && !question && !answer && !busy && (
-          <p className="hud-muted">
-            Answers appear here. All interview questions and answers are kept visible and scrollable throughout your session.
-          </p>
+        {!qaLog.length && !question && !answer && (
+          <div className="hud-empty">
+            <p>{busy ? "Checking the question…" : "Answers appear here. All interview questions and answers are kept visible and scrollable throughout your session."}</p>
+          </div>
         )}
-        {status && chips.length > 0 && <p className="hud-muted hud-status">{status}</p>}
 
         {/* Floating jump to latest answer button when user scrolls up to review earlier questions */}
         {!followAnswer && (qaLog.length > 0 || answer) && (
@@ -860,6 +878,16 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
             ⬇ Jump to latest answer
           </button>
         )}
+        </div>
+        <div className="hud-session-footer">
+          <p className="hud-muted hud-status" role="status">{status || "Ready when you are."}</p>
+          {(qaLog.length > 0 || question || answer) && (
+            <button type="button" className="hud-session-end" onClick={handleEndSession}
+              title={hoverTitle("Clear desktop session. Saved questions remain in your history.")}>
+              <Icon name="history" size={14} /> End Session ({qaLog.length + (question || answer ? 1 : 0)})
+            </button>
+          )}
+        </div>
       </section>
 
       {showHistoryModal && (
