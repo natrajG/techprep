@@ -46,6 +46,9 @@ function isHallucinatedChunk(text) {
 // Pace auto-scrolling while the answer streams in, instead of jumping to the bottom on every
 // token, so each new line stays visible long enough to actually read before it scrolls away.
 const ANSWER_AUTO_SCROLL_INTERVAL_MS = 600;
+const ANSWER_CONNECT_TIMEOUT_MS = 12000;
+const ANSWER_STREAM_IDLE_TIMEOUT_MS = 30000;
+const ANSWER_MAX_ATTEMPTS = 2;
 
 const notifyExpired = () => window.dispatchEvent(new Event("auth-expired"));
 // Plans that grant a single call window tracked via call_time_remaining_seconds: the hourly
@@ -511,63 +514,106 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       setStatus("Preparing your answer…");
     }
     try {
-      const r = await authFetch(`${API}/api/v1/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: requestedQuestion, transcript: requestedTranscript,
-          resume, job_description: jd, history: historyRef.current,
-          session_id: answerSessionIdRef.current, utterance_id: utteranceId, question_source: questionSource,
-        }),
-      }, fetch, localStorage, notifyExpired);
-      if (!r.ok) {
-        const detail = (await r.json()).detail;
-        throw new Error(`HTTP ${r.status}: ${detail}`);
-      }
-      const reader = r.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      let answeredQuestion = "";
-      let answeredText = "";
-      let completed = false;
-      let failed = false;
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const events = buf.split("\n\n");
-        buf = events.pop();
-        for (const ev of events) {
-          const evName = ev.match(/^event: (.*)$/m)?.[1];
-          const data = ev.match(/^data: (.*)$/m)?.[1];
-          if (data == null) continue;
-          const val = JSON.parse(data);
-          if (evName === "question") {
-            answeredQuestion = val;
-            if (val) beginAnswer(val);
-          } else if (evName === "classification") {
-            if (val === "IGNORE") setStatus("Non-question ignored. Waiting for an interview question.");
-            if (val === "WAIT") setStatus("Waiting for a complete interview question.");
-          } else if (evName === "done") completed = true;
-          else if (evName === "error") {
-            failed = true;
-            beginAnswer(answeredQuestion || requestedQuestion);
-            setAnswer((a) => a + val);
-            setStatus("The answer could not be completed.");
-          } else if (!evName) {
-            beginAnswer(answeredQuestion || requestedQuestion);
-            answeredText += val;
-            setAnswer((a) => a + val);
+      const readChunkWithTimeout = async (reader, controller, timeoutMs, timeoutMessage) => {
+        let timeoutId;
+        try {
+          return await Promise.race([
+            reader.read(),
+            new Promise((_, reject) => {
+              timeoutId = window.setTimeout(() => {
+                controller.abort();
+                reject(new Error(timeoutMessage));
+              }, timeoutMs);
+            }),
+          ]);
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      };
+      let finalError = null;
+      let completedResponse = false;
+      for (let attempt = 1; attempt <= ANSWER_MAX_ATTEMPTS && !completedResponse; attempt++) {
+        if (attempt > 1) setStatus("Response is slow. Retrying once…");
+        const controller = new AbortController();
+        let sawAnyEvent = false;
+        try {
+          const r = await authFetch(`${API}/api/v1/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: requestedQuestion, transcript: requestedTranscript,
+              resume, job_description: jd, history: historyRef.current,
+              session_id: answerSessionIdRef.current, utterance_id: utteranceId, question_source: questionSource,
+            }),
+            signal: controller.signal,
+          }, fetch, localStorage, notifyExpired);
+          if (!r.ok) {
+            const detail = (await r.json()).detail;
+            throw new Error(`HTTP ${r.status}: ${detail}`);
           }
+          if (!r.body) throw new Error("Answer stream did not start.");
+          const reader = r.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "";
+          let answeredQuestion = "";
+          let answeredText = "";
+          let completed = false;
+          let failed = false;
+          let firstChunk = true;
+          for (;;) {
+            const timeout = firstChunk ? ANSWER_CONNECT_TIMEOUT_MS : ANSWER_STREAM_IDLE_TIMEOUT_MS;
+            const timeoutMessage = firstChunk
+              ? "Timed out waiting for answer to start."
+              : "Timed out while waiting for answer continuation.";
+            const { value, done } = await readChunkWithTimeout(reader, controller, timeout, timeoutMessage);
+            if (done) break;
+            firstChunk = false;
+            sawAnyEvent = true;
+            buf += dec.decode(value, { stream: true });
+            const events = buf.split("\n\n");
+            buf = events.pop();
+            for (const ev of events) {
+              const evName = ev.match(/^event: (.*)$/m)?.[1];
+              const data = ev.match(/^data: (.*)$/m)?.[1];
+              if (data == null) continue;
+              const val = JSON.parse(data);
+              if (evName === "question") {
+                answeredQuestion = val;
+                if (val) beginAnswer(val);
+              } else if (evName === "classification") {
+                if (val === "IGNORE") setStatus("Non-question ignored. Waiting for an interview question.");
+                if (val === "WAIT") setStatus("Waiting for a complete interview question.");
+              } else if (evName === "done") completed = true;
+              else if (evName === "error") {
+                failed = true;
+                beginAnswer(answeredQuestion || requestedQuestion);
+                setAnswer((a) => a + val);
+                setStatus("The answer could not be completed.");
+              } else if (!evName) {
+                beginAnswer(answeredQuestion || requestedQuestion);
+                answeredText += val;
+                setAnswer((a) => a + val);
+              }
+            }
+          }
+          if (completed && !failed && answeredQuestion && answeredText) {
+            historyRef.current = [...historyRef.current, {
+              question: answeredQuestion.slice(0, 500),
+              answer: answeredText.slice(0, 4000),
+            }].slice(-2);
+            setStatus("Answer ready.");
+          }
+          completedResponse = true;
+        } catch (attemptError) {
+          finalError = attemptError;
+          const message = String(attemptError?.message || "");
+          const retryable = !sawAnyEvent &&
+            attempt < ANSWER_MAX_ATTEMPTS &&
+            /timed out|abort|network|fetch/i.test(message);
+          if (!retryable) break;
         }
       }
-      if (completed && !failed && answeredQuestion && answeredText) {
-        historyRef.current = [...historyRef.current, {
-          question: answeredQuestion.slice(0, 500),
-          answer: answeredText.slice(0, 4000),
-        }].slice(-2);
-        setStatus("Answer ready.");
-      }
+      if (!completedResponse && finalError) throw finalError;
       if (autoTranscript === null) setManualQ("");
     } catch (e) {
       beginAnswer(requestedQuestion);
@@ -612,7 +658,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
   const panel = (
     <main className={`hud${desktop ? " hud-desktop" : ""}`} style={{ "--hud-opacity": opacity }}>
       {!answerFocused && (
-      <div className={`hud-bar${desktop ? " hud-drag" : ""}`}>
+      <div className={`hud-bar hud-controls-primary${desktop ? " hud-drag" : ""}`}>
         <button className={`hud-pill hud-listen${listening ? " on" : ""}`} onClick={listening || captureStarting ? stopListening : startListening}
           title={hoverTitle(listening ? "Stop listening" : captureStarting ? "Cancel capture setup" : "Listen to meeting tab")}>
           <span className={`hud-dot${listening ? " live" : ""}`} />
@@ -739,7 +785,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
         />
       )}
 
-      {!answerFocused && <div className="hud-bar hud-chips">
+      {!answerFocused && <div className="hud-bar hud-chips hud-controls-secondary">
         <span className={`hud-eq${listening ? " live" : ""}`} aria-hidden>▮▮▮</span>
         {chips.length
           ? chips.map((c, i) => <span key={i} className="hud-chip">{c}</span>)
@@ -747,7 +793,7 @@ export default function App({ onSignOut, currentUser = null, isAdmin = false, in
       </div>}
 
       {menuOpen && !answerFocused && (
-        <section className="hud-card hud-menu">
+        <section className="hud-card hud-menu hud-controls-menu">
           <p className="hud-muted" style={{ marginTop: 0 }}>{sourceHint}</p>
           {useDeviceInput && (
             <p className="hud-muted" title={hoverTitle("Set by the desktop app. Restart it after changing your output device.")}>

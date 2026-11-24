@@ -29,6 +29,22 @@ def _history_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_interview_history_user ON interview_history (username, created_at DESC)"
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS interview_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL COLLATE NOCASE,
+            session_id TEXT,
+            utterance_id TEXT,
+            outcome TEXT NOT NULL,
+            transcript TEXT NOT NULL,
+            extracted_question TEXT NOT NULL,
+            details TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_interview_events_user ON interview_events (username, created_at DESC)"
+    )
 
 
 users.register_schema(_history_schema)
@@ -56,6 +72,39 @@ def save_interview_qa(
             """INSERT INTO interview_history (username, session_id, question, answer, category, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (username, session_id, clean_q, clean_a, category or "general", now),
+        )
+        return cursor.lastrowid or 0
+
+
+def save_interview_event(
+    username: str,
+    outcome: str,
+    transcript: str = "",
+    extracted_question: str = "",
+    details: str = "",
+    session_id: str | None = None,
+    utterance_id: str | None = None,
+) -> int:
+    """Store classifier/answer pipeline outcomes for support diagnostics."""
+    clean_outcome = (outcome or "").strip().upper()
+    if not clean_outcome:
+        return 0
+    now = int(time.time())
+    with users.connect() as conn:
+        cursor = conn.execute(
+            """INSERT INTO interview_events (
+                username, session_id, utterance_id, outcome, transcript, extracted_question, details, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                username,
+                (session_id or "").strip() or None,
+                (utterance_id or "").strip() or None,
+                clean_outcome,
+                (transcript or "").strip()[:20000],
+                (extracted_question or "").strip()[:20000],
+                (details or "").strip()[:50000],
+                now,
+            ),
         )
         return cursor.lastrowid or 0
 

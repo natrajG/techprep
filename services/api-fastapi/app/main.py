@@ -91,12 +91,14 @@ app.add_middleware(
 )
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
+MIN_AUDIO_BYTES = int(os.getenv("MIN_TRANSCRIBE_AUDIO_BYTES", "500"))
 logger = logging.getLogger("techprep")
-MIN_EXTRACT_CONFIDENCE = 0.80
+MIN_EXTRACT_CONFIDENCE = 0.72
 QUESTION_EXTRACT_MAX_CHARS = 1600
 QUESTION_EXTRACT_CONTEXT_TAIL = 260
 ANSWER_DEDUP_TTL_SECONDS = 180
 CLASSIFIER_DEDUP_TTL_SECONDS = 45
+WAIT_FALLBACK_TTL_SECONDS = 45
 NO_ANSWER_SENTINEL = "NO_ANSWER"
 _FILLER_WORDS = {
     "okay", "ok", "thanks", "thank", "you", "yes", "yeah", "yep", "right",
@@ -116,8 +118,14 @@ _LOGISTICS_PATTERNS = (
     r"(?:please )?(?:rejoin(?: the (?:call|meeting))?(?: again)?|join again|join the (?:call|meeting) again)(?: please)?",
 )
 _WAIT_SUFFIX = re.compile(r"\b(and|or|with|without|using|where|that|which|if|when|while|to)\s*$", re.IGNORECASE)
+_QUESTION_SIGNAL = re.compile(
+    r"\b(how|why|what|when|where|which|explain|difference|compare|implement|design|write|build|create|optimi[sz]e|"
+    r"debug|fix|solve|walk me through|can you|could you|would you|should i)\b|\?",
+    re.IGNORECASE,
+)
 _recent_answer_events: dict[tuple[str, str, str], tuple[float, str]] = {}
 _recent_classifier_events: dict[tuple[str, str, str], float] = {}
+_recent_wait_events: dict[tuple[str, str, str], tuple[float, int]] = {}
 _dedupe_lock = asyncio.Lock()
 
 
@@ -141,6 +149,10 @@ def _extract_confidence_threshold() -> float:
 
 def _normalize_spaces(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _has_question_signal(text: str) -> bool:
+    return bool(_QUESTION_SIGNAL.search(_normalize_spaces(text)))
 
 
 def _recent_transcript_window(transcript: str, history: list["AnswerTurn"]) -> str:
@@ -254,6 +266,25 @@ async def _begin_answer_event(user: str, scope: str, fingerprint: str) -> bool:
             return False
         _recent_answer_events[key] = (now + ANSWER_DEDUP_TTL_SECONDS, "pending")
         return True
+
+
+async def _wait_fallback_ready(user: str, scope: str, transcript_window: str) -> bool:
+    normalized = _normalize_spaces(transcript_window)
+    if not normalized or not _has_question_signal(normalized):
+        return False
+    fingerprint = f"wait:{_sha1(normalized.lower())}"
+    now = time.time()
+    key = (user, scope, fingerprint)
+    async with _dedupe_lock:
+        for k, (expires, _) in list(_recent_wait_events.items()):
+            if expires <= now:
+                del _recent_wait_events[k]
+        expires, count = _recent_wait_events.get(key, (0.0, 0))
+        if expires <= now:
+            count = 0
+        count += 1
+        _recent_wait_events[key] = (now + WAIT_FALLBACK_TTL_SECONDS, count)
+        return count >= 2
 
 
 async def _finish_answer_event(user: str, scope: str, fingerprint: str, success: bool) -> None:
@@ -599,7 +630,8 @@ async def transcribe(
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Audio chunk too large")
-    if len(data) < 1000:
+    if len(data) < MIN_AUDIO_BYTES:
+        logger.info("transcribe.skip_small_chunk user=%s bytes=%d threshold=%d", user, len(data), MIN_AUDIO_BYTES)
         return {"text": ""}
     await start_call(request, user)
     return {"text": await llm.transcribe(audio.filename or "chunk.webm", data)}
@@ -662,6 +694,14 @@ async def answer(
             extraction.question = ""
 
     question = extraction.question.strip() if extraction.decision == "ANSWER" else ""
+    if extraction.decision == "WAIT" and transcript_window and await _wait_fallback_ready(user, session_scope, transcript_window):
+        fallback_question = transcript_window.strip()
+        if fallback_question:
+            extraction = QuestionExtractionResult(decision="ANSWER", question=fallback_question, confidence=0.65)
+            classifier = "wait-fallback"
+            logger.info("answer.wait_fallback user=%s scope=%s", user, session_scope)
+            question = extraction.question.strip()
+
     if extraction.decision == "ANSWER" and not allow_manual_bypass:
         answer_dedupe_fingerprint = _answer_event_fingerprint(req, transcript_window, question)
         if not await _begin_answer_event(user, session_scope, answer_dedupe_fingerprint):
@@ -688,10 +728,25 @@ async def answer(
     ]
 
     async def events():
+        outcome = extraction.decision
+        detail = classifier
         yield f"event: classification\ndata: {json.dumps(extraction.decision)}\n\n"
         if extraction.decision != "ANSWER":
             yield 'event: question\ndata: ""\n\n'
             await record_usage.flush()
+            try:
+                await run_in_threadpool(
+                    history_module.save_interview_event,
+                    user,
+                    outcome,
+                    req.transcript,
+                    "",
+                    f"classifier={classifier}; confidence={extraction.confidence:.2f}",
+                    req.session_id,
+                    req.utterance_id,
+                )
+            except Exception:
+                logger.exception("Could not persist interview event")
             yield "event: done\ndata: \"\"\n\n"
             return
         full_tokens: list[str] = []
@@ -713,6 +768,8 @@ async def answer(
                     yield f"data: {json.dumps(token)}\n\n"
         except Exception as e:  # surface provider errors (quota, auth, network) in the UI
             stream_failed = True
+            outcome = "ERROR"
+            detail = f"stream-error:{type(e).__name__}"
             if not question_sent:
                 yield f"event: question\ndata: {json.dumps(question)}\n\n"
             if settings.production():
@@ -730,16 +787,33 @@ async def answer(
                 yield f"event: question\ndata: {json.dumps(question)}\n\n"
                 yield f"data: {json.dumps(prefix)}\n\n"
             else:
+                outcome = "NO_ANSWER"
+                detail = "no-answer-sentinel"
                 logger.info("answer.skipped_empty_or_no_answer user=%s", user)
                 yield 'event: classification\ndata: "IGNORE"\n\n'
                 yield 'event: question\ndata: ""\n\n'
         if not stream_failed and question and is_saveable_answer:
+            outcome = "ANSWER"
+            detail = "saved-answer"
             try:
-                await run_in_threadpool(history_module.save_interview_qa, user, question, answered_text)
+                await run_in_threadpool(history_module.save_interview_qa, user, question, answered_text, "general", req.session_id)
             except Exception:
                 logger.exception("Could not auto-save question and answer to interview history")
         if answer_dedupe_fingerprint:
             await _finish_answer_event(user, session_scope, answer_dedupe_fingerprint, not stream_failed and is_saveable_answer)
+        try:
+            await run_in_threadpool(
+                history_module.save_interview_event,
+                user,
+                outcome,
+                req.transcript,
+                question,
+                detail,
+                req.session_id,
+                req.utterance_id,
+            )
+        except Exception:
+            logger.exception("Could not persist interview event")
         yield "event: done\ndata: \"\"\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")

@@ -19,7 +19,10 @@ body { background: #0b0b0b; }
 }
 /* Only the answer card may shrink; its inner answer list scrolls independently. */
 .hud-desktop > * { flex-shrink: 0; }
-.hud-desktop > .hud-qa { flex: 1 1 0; min-height: 0; }
+.hud-desktop > .hud-qa { flex: 1 1 0; min-height: 0; order: 10; }
+.hud-desktop > .hud-controls-primary { order: 20; }
+.hud-desktop > .hud-controls-secondary { order: 21; }
+.hud-desktop > .hud-controls-menu { order: 22; }
 .hud-desktop .hud-menu { max-height: 45vh; overflow-y: auto; }
 /* Opacity fades only the card background; text stays solid and gets a soft shadow for bright backdrops. */
 .hud { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }

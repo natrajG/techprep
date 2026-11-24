@@ -25,6 +25,7 @@ class AnswerClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         main_module._recent_answer_events.clear()
         main_module._recent_classifier_events.clear()
+        main_module._recent_wait_events.clear()
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -105,6 +106,25 @@ class AnswerClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('event: question\ndata: ""', response.text)
         self.assertIn("event: done", response.text)
+
+    async def test_repeated_wait_with_question_signal_forces_fallback_answer(self):
+        stream_calls = 0
+
+        async def fake_stream(_system, _question, _history, on_usage=None):
+            nonlocal stream_calls
+            stream_calls += 1
+            yield "Use indexes to optimize lookups."
+
+        payload = {"transcript": "Can you explain database indexing?"}
+        with patch("app.llm.complete", AsyncMock(return_value=_classifier("WAIT", "", 0.95))), \
+             patch("app.llm.stream_chat", fake_stream):
+            first = await self._answer("u4b", payload)
+            second = await self._answer("u4b", payload)
+        self.assertEqual(first.status_code, 200)
+        self.assertIn('event: question\ndata: ""', first.text)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn("Use indexes", second.text)
+        self.assertEqual(stream_calls, 1)
 
     async def test_followup_without_context_waits(self):
         with patch("app.llm.complete", AsyncMock(return_value=_classifier("ANSWER", "Why?", 0.72))), \
