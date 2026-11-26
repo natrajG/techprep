@@ -23,7 +23,7 @@ export default function AdminDashboard({ user, onSignOut }) {
   const [grantPlanName, setGrantPlanName] = useState("");
   const [grantCallLimit, setGrantCallLimit] = useState(30);
   const [grantDurationDays, setGrantDurationDays] = useState(30);
-  const [grantDurationMinutes, setGrantDurationMinutes] = useState(60);
+  const [grantDurationMinutes, setGrantDurationMinutes] = useState(90);
   const [grantReason, setGrantReason] = useState("");
   const [granting, setGranting] = useState(false);
   const [grantMessage, setGrantMessage] = useState("");
@@ -81,7 +81,7 @@ export default function AdminDashboard({ user, onSignOut }) {
       payload.duration_days = Number(grantDurationDays) || 30;
       payload.call_limit = Number(grantCallLimit) || 30;
     } else if (grantPlanId === "hourly_call") {
-      payload.duration_minutes = Number(grantDurationMinutes) || 60;
+      payload.duration_minutes = Number(grantDurationMinutes) || 90;
       payload.call_limit = Number(grantCallLimit) || 1;
     } else {
       // Custom offer
@@ -570,7 +570,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                       } else if (pid === "hourly_call") {
                         setGrantPlanName("Interview Call");
                         setGrantCallLimit(1);
-                        setGrantDurationMinutes(60);
+                        setGrantDurationMinutes(90);
                       } else {
                         setGrantPlanName("Special Campus Offer");
                         setGrantCallLimit(10);
@@ -579,7 +579,7 @@ export default function AdminDashboard({ user, onSignOut }) {
                     }}
                   >
                     <option value="monthly">Monthly Pro (30 Days · 30 Calls)</option>
-                    <option value="hourly_call">Single Interview Call (1 Hour)</option>
+                    <option value="hourly_call">Single Interview Call (90 Minutes)</option>
                     <option value="custom_offer">Custom Promotional Offer</option>
                   </select>
                 </label>

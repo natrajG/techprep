@@ -135,7 +135,7 @@ Roles: **Lead Python Developer** and **Python Full Stack Developer**.
 API: `POST /api/v1/transcribe` (multipart `audio`), `POST /api/v1/answer` (SSE stream), `POST /api/v1/evaluate` (practice scoring).
 The monthly plan defaults to 30 one-hour calls within 30 days. A call window begins on the first
 AI or audio request and subsequent requests within that hour use the same call; the hourly
-plan includes one call window (60 minutes by default). An administrator signed in with
+plan includes one call window (90 minutes by default). An administrator signed in with
 `APP_USERNAME` can edit plan prices, monthly call allowance, hourly call duration, and monthly
 plan duration in the account profile or web dashboard. Changes apply only to newly created
 orders; existing orders and subscriptions retain their purchased terms. Previously purchased

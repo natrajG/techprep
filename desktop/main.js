@@ -151,6 +151,7 @@ function createWindow() {
     preload: path.join(__dirname, "preload.js"),
     url: APP_URL,
     onLoadError: (error) => {
+      if (!overlay || overlay.window !== win || win.isDestroyed()) return; // closed on purpose mid-load
       logger.error("Cannot load overlay:", error);
       dialog.showErrorBox("Cannot load TechPrep", `Check ${APP_URL} and its certificate trust, then relaunch.\n${error.message}`);
       app.quit();
@@ -191,6 +192,10 @@ function openLogin() {
   const current = loginWin;
   current.on("closed", () => { if (loginWin === current) loginWin = null; });
   current.loadURL(url.toString()).catch((error) => {
+    // Closing the window mid-load (e.g. a saved session switching straight to the overlay) rejects
+    // loadURL with ERR_FAILED/ERR_ABORTED; that is expected, not a connection problem.
+    if (current.isDestroyed() || loginWin !== current) return;
+    logger.error("Cannot load login window:", error);
     dialog.showErrorBox("Cannot load TechPrep", `Check ${APP_URL} and its certificate trust, then relaunch.\n${error.message}`);
     app.quit();
   });

@@ -85,9 +85,20 @@ export default function Login({
 
   function handleGoogleClick() {
     if (googleDesktopStartUrl) {
+      // Desktop builds older than the system-browser handoff lack this bridge, so the click would do nothing.
+      if (typeof window.desktop?.openExternal !== "function") {
+        setNotice("");
+        setError("Google sign-in needs the latest TechPrep app. Please download and reinstall it from the website, or sign in with your username and password.");
+        return;
+      }
       setError("");
       setNotice("Continue in your browser, then come back here \u2014 you'll be signed in automatically.");
-      window.desktop?.openExternal(googleDesktopStartUrl);
+      window.desktop.openExternal(googleDesktopStartUrl).then((opened) => {
+        if (opened === false) {
+          setNotice("");
+          setError("Could not open your browser for Google sign-in. Please sign in with your username and password.");
+        }
+      }).catch(() => {});
       return;
     }
     if (!window.google?.accounts?.id) return;

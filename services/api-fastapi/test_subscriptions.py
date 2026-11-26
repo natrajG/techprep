@@ -167,26 +167,26 @@ class SubscriptionTests(unittest.IsolatedAsyncioTestCase):
             admin = {"Authorization": "Bearer " + auth.issue_token("operator")}
             await self.client.put(
                 "/api/v1/subscription/plans/hourly_call",
-                json={"amount": 399, "duration_minutes": 90}, headers=admin,
+                json={"amount": 399, "duration_minutes": 120}, headers=admin,
             )
         self.assertEqual((await self.verify_order(old_order)).status_code, 200)
         old = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
-        self.assertEqual(old["call_duration_minutes"], 60)
+        self.assertEqual(old["call_duration_minutes"], 90)
         self.assertEqual(old["amount"], 201)
 
         new_order = (await self.client.post(
             "/api/v1/subscription/create-order", json={"plan_id": "hourly_call"}, headers=self.headers
         )).json()
         self.assertEqual(new_order["amount"], 401)
-        self.assertEqual(new_order["plan"]["duration_minutes"], 90)
+        self.assertEqual(new_order["plan"]["duration_minutes"], 120)
         self.assertEqual((await self.verify_order(new_order)).status_code, 200)
         with patch.object(llm, "transcribe", AsyncMock(return_value="")):
             self.assertEqual((await self.client.post(
                 "/api/v1/transcribe", files={"audio": ("chunk.webm", b"a" * 1000)}, headers=self.headers,
             )).status_code, 200)
         current = (await self.client.get("/api/v1/subscription/status", headers=self.headers)).json()["subscription"]
-        self.assertEqual(current["call_duration_minutes"], 90)
-        self.assertAlmostEqual(current["time_remaining_seconds"], 90 * 60, delta=2)
+        self.assertEqual(current["call_duration_minutes"], 120)
+        self.assertAlmostEqual(current["time_remaining_seconds"], 120 * 60, delta=2)
 
     async def test_initial_subscription_status(self):
         res = await self.client.get("/api/v1/subscription/status", headers=self.headers)

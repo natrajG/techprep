@@ -253,7 +253,7 @@ def grant_subscription(req: GrantSubscriptionRequest, admin: str = Depends(requi
         elif plan_id == "hourly_call":
             plan_name = req.plan_name or "Interview Call"
             duration_days = None
-            duration_minutes = req.duration_minutes or 60
+            duration_minutes = req.duration_minutes or 90
             call_limit = req.call_limit or 1
             session_start = None  # Starts on first use
             valid_until = None

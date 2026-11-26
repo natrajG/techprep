@@ -26,7 +26,7 @@ PLANS = {
         "name": "Interview Call",
         "amount": 199,
         "currency": "INR",
-        "duration_minutes": 60,
+        "duration_minutes": 90,
     },
     "monthly": {
         "id": "monthly",

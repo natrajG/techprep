@@ -21,6 +21,7 @@ async function boot({
   sources = [{ id: "screen:0" }],
   sourceError,
   singleInstanceLock = true,
+  pendingLoads = false,
 } = {}) {
   const handlers = new Map();
   const windows = [];
@@ -60,7 +61,11 @@ async function boot({
     minimize() { this.minimized = true; }
     restore() { this.minimized = false; }
     focus() { this.focused = true; }
-    loadURL(url) { this.url = url; return Promise.resolve(); }
+    loadURL(url) {
+      this.url = url;
+      if (!pendingLoads) return Promise.resolve();
+      return new Promise((resolve, reject) => { this.finishLoad = resolve; this.failLoad = reject; });
+    }
     show() { this.shown = true; }
     close() { this.closedByApp = true; this.emit("closed"); }
   }
@@ -223,6 +228,25 @@ test("the first window is the login window, and the overlay opens only after sig
   assert.deepEqual(overlay.skipTaskbarCalls, [true, true]);
   assert.equal(login.closedByApp, true);
   assert.throws(() => handlers.get("login-succeeded")(sender(overlay)), /Only the login window/);
+});
+
+test("closing the login window mid-load for a saved session does not report a load failure", async () => {
+  const boot1 = await boot({ pendingLoads: true });
+  const { app, errors, windows } = boot1;
+  const login = windows[0];
+  signIn(boot1);
+  login.failLoad(new Error("ERR_FAILED (-2) loading 'https://example.test/?login=1'"));
+  await new Promise(setImmediate);
+  assert.deepEqual(errors, []);
+  assert.equal(app.didQuit, undefined);
+});
+
+test("a login window that genuinely fails to load still reports the error", async () => {
+  const { app, errors, windows } = await boot({ pendingLoads: true });
+  windows[0].failLoad(new Error("ERR_NAME_NOT_RESOLVED"));
+  await new Promise(setImmediate);
+  assert.equal(errors.length, 1);
+  assert.equal(app.didQuit, true);
 });
 
 test("login and sign-out IPC reject unrelated senders", async () => {

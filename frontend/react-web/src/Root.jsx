@@ -94,8 +94,15 @@ export default function Root() {
   // The overlay must never stay open without a session.
   useEffect(() => {
     if (!desktop) return;
-    if (session === "signedIn" && loginWindow) desktop.loginSucceeded();
-    if (session === "signedOut" && !loginWindow) desktop.signOut();
+    // Switching windows closes this one; doing that before the page finishes loading makes older
+    // desktop builds treat the aborted load as fatal ("Cannot load TechPrep"), so wait for "load".
+    const switchWindow = () => {
+      if (session === "signedIn" && loginWindow) desktop.loginSucceeded();
+      if (session === "signedOut" && !loginWindow) desktop.signOut();
+    };
+    if (document.readyState === "complete") { switchWindow(); return; }
+    window.addEventListener("load", switchWindow, { once: true });
+    return () => window.removeEventListener("load", switchWindow);
   }, [session]);
 
   async function signIn(username, password) {
@@ -195,7 +202,10 @@ export default function Root() {
         onSignUp={undefined}
         wrongPasswordHint="Forgot it? Reset your password on the website."
         minimumPassword={config?.minimum_password || 8}
-        googleDesktopStartUrl={config?.google_desktop_signin ? `${API}/api/v1/auth/google/desktop/start` : undefined}
+        googleDesktopStartUrl={config?.google_desktop_signin
+          // Must be absolute: the desktop app only hands http(s) URLs to the system browser.
+          ? new URL(`${API}/api/v1/auth/google/desktop/start`, window.location.href).toString()
+          : undefined}
         externalError={googleHandoffError}
       />
     );

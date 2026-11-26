@@ -56,10 +56,10 @@ const FAQ = [
       "rejoin", "reconnect", "call fail", "call failed", "call closed",
     ],
     answer:
-      "No need to buy again. On the ₹199 Hourly Call plan, your 60-minute window starts the moment your call first " +
-      "begins — if it drops or disconnects, just reconnect and resume within that same 60 minutes at no extra charge. " +
-      "You'd only need to purchase a new session if you reconnect after the full 60-minute window from the original " +
-      "start has expired. The same applies to each call on the ₹1,999 Monthly plan.",
+      "No need to buy again. On the ₹199 Hourly Call plan, your 90-minute window starts the moment your call first " +
+      "begins — if it drops or disconnects, just reconnect and resume within that same 90 minutes at no extra charge. " +
+      "You'd only need to purchase a new session if you reconnect after the full 90-minute window from the original " +
+      "start has expired. Each call on the ₹1,999 Monthly plan works the same way with a 60-minute window.",
   },
   {
     keywords: [
@@ -67,7 +67,7 @@ const FAQ = [
     ],
     answer:
       "₹199 Hourly Call plan gives you:\n" +
-      "• One full 60-minute live interview session with the invisible HUD overlay active.\n" +
+      "• One full 90-minute live interview session with the invisible HUD overlay active.\n" +
       "• Real-time system-audio transcription of the interviewer's questions.\n" +
       "• AI-generated, resume- and job-description-tailored suggested answers streamed live during that call.\n" +
       "• Full stealth screen-share protection for that session.\n" +
